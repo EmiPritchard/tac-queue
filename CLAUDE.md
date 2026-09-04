@@ -65,7 +65,12 @@ spec map to New and Requester Responded respectively.
 
 **Other custom fields:** `customfield_10002` organisation,
 `customfield_10854` product, `customfield_10690` CSAT,
-`customfield_10700` / `customfield_10690` used in historical.
+`customfield_10700` / `customfield_10690` used in historical,
+`customfield_10874` TAC Tier — single-select, `{value: "1.5"|"2.0"|"2.5"}`,
+powers the Priority list's tier filter (added 28 Aug 2026, confirmed against
+81 live open tickets: only those three values occur, no nulls — though the
+filter still treats "all three checked" as unfiltered rather than exact
+membership, so an unseen 4th value or a null wouldn't be silently dropped).
 
 **The third-party filter** (`TP_FILTER` in the code) excludes tickets parked
 with a third party in a state the TAC team can't act on:
@@ -133,19 +138,94 @@ Three definitions worth knowing:
   Corrected on 28 Aug 2026. The previous version reported `breached` only when
   *no* clock was still running, so a single healthy SLA — usually **Time with
   Agent**, whose 100h goal stays green long after First Response or Resolution
-  have gone — hid live breaches on **15 of 56** open tickets. Measured against
-  the live queue: 26 tickets have a live breach, the old rule surfaced 11.
+  have gone — hid live breaches on **15 of 56** open tickets.
 
-  A **paused** cycle that is past target counts as breached: pausing stops the
-  clock without un-missing the target. That is 7 tickets today, all Pending
-  Response or Awaiting External Party. To treat them as not-actionable instead,
-  add `&& !s.ongoingCycle.paused` to `isBreachingNow()` — tier 2 goes 26 → 19.
+  A **paused** cycle never counts as breaching, even one already past target:
+  paused means the requirement is not currently outstanding — the clock is
+  stopped pending the other party, so there is nothing to chase right now.
+  Corrected again same day: an intermediate version *did* count
+  paused-and-past-target as breached, on the reasoning that pausing doesn't
+  un-miss a target. The business call was the opposite — chased-and-waiting is
+  not the same as chased-and-ignored — so that intermediate version is wrong,
+  not just superseded. A ticket whose only past-target clock is paused instead
+  falls through to whatever *other* SLA is still genuinely ticking, or to
+  `paused` if none is. Measured against the live queue: 26 tickets had a
+  breached-or-paused clock; **19** have a genuinely live breach.
 - "Soonest breach" uses `resolveSla()`, which picks the **minimum remaining
   time across all six SLA fields**, counting only cycles that are ongoing and
   not paused. Tickets with no ticking SLA sort to the bottom of their tier
   rather than the top.
 - "Going overdue today" is evaluated against the **Europe/London** calendar
   date, matching the timezone convention used throughout the file.
+
+**Linked-tickets drill (added 28 Aug 2026).** A ticket with status
+**Awaiting Internal Team** gets a small link-icon button next to its status
+badge in the Priority list, showing a count and expanding to the tickets it's
+linked to — key, relationship ("causes" / "is caused by" / whatever the link
+type's inward/outward label is), summary, status, priority. Linked issues can
+be in other projects (ESD, DEVX, ...); the browse link still works because
+`JIRA_BASE` isn't project-scoped.
+
+No extra Jira call: Jira's `issuelinks` field always returns a fixed stub
+(summary, status, priority, issuetype) for each linked issue regardless of
+what's requested elsewhere, so adding `'issuelinks'` to `LIVE_FIELDS` was
+enough — it rides along on the one existing live-queue fetch. The button
+appears for every Awaiting Internal Team ticket, including ones with zero
+links (shows "No linked tickets" rather than hiding the control), since a
+ticket parked on a dependency that isn't actually linked is itself worth
+surfacing. Implemented in `priorityRow()` / `linkDrillRow()` / `toggleLinkDrill()`;
+expansion state is a plain `Set` re-read on each `renderPriorityTable()` call,
+the same pattern `activeSubDrill` already uses elsewhere.
+
+**"Ready to close" flag (added 28 Aug 2026).** When every linked ticket on an
+Awaiting Internal Team ticket is closed/resolved, a green chip appears next to
+the status badge — the signal that whatever this ticket was blocked on has
+landed, so it's worth a human re-checking whether the TAC ticket itself can now
+be resolved. The matching linked row in the drill gets the same green
+treatment, so the two views agree.
+
+"Closed or resolved" is checked via `fields.status.statusCategory.key ===
+'done'`, not the status name. Linked issues can be in any project (ESD, DEVX,
+TAC, ...) with its own workflow and its own words for "finished" — Closed,
+Resolved, Done, Won't Fix — and `statusCategory` is Jira's own project-independent
+answer to "is this issue finished", present on every issue stub. Matching on
+status name instead would silently miss every non-TAC project's spelling of
+done. A ticket with zero links is never "ready" — there's nothing to confirm
+against. Implemented in `isLinkDone()` / `allLinksResolved()`.
+
+**Hide Awaiting Internal Team by default (added 28 Aug 2026).** A "Show
+Awaiting Internal Team" tickbox sits in the Priority list controls, unchecked
+on every fresh load — those tickets are blocked on someone else's work rather
+than the TAC team's next action, so by default they're filtered out of the
+triage view entirely rather than just sorted low. The summary line and the
+empty state both say how many are hidden, so an empty or short list still
+explains itself rather than looking broken. State lives in `showAwaitingInternal`,
+a plain module-level flag deliberately **not** persisted to `localStorage` —
+persisting it would contradict "unticked by default" on the next visit.
+Filtering happens in `renderPriorityTable()`, after the assignee filter and
+before `buildPriorityList()`, so hidden tickets never enter tiering at all.
+
+**TAC Tier multi-select (added 28 Aug 2026).** A dropdown next to the
+assignee picker filters the Priority list by `customfield_10874` ("TAC Tier"),
+options 1.5 / 2.0 / 2.5, all three checked by default. It's a genuine
+multi-select — any combination, including all three or none — built as a
+custom button-plus-checkbox-panel rather than a native `<select multiple>`,
+since a multi-select native control needs ctrl/cmd-click to use and gives no
+visible summary of what's picked. State is `selectedTacTiers`, a `Set` of the
+values to *include*; "all three selected" is treated as unfiltered rather than
+exact membership, so a ticket with a tier value this build doesn't know about
+(there are none today, but nothing guarantees that stays true) shows by
+default instead of silently vanishing. Deselecting anything switches to exact
+membership, so unchecking all three correctly shows zero tickets rather than
+falling back to "show everything" — the empty state says so explicitly instead
+of looking broken.
+
+Checking or unchecking an option calls `renderPriorityList()`, not just
+`renderPriorityTable()`, because the toggle button's own label text has to
+update too. A single `document` click listener (`closeTacTierPanelOnOutsideClick`,
+registered once at boot) closes the panel on any click outside it; clicks
+inside the panel call `stopPropagation()` so checking a box doesn't
+immediately trigger that same listener and close itself.
 
 ## 5. Decisions and rationale
 
@@ -208,14 +288,25 @@ surfaced as a bare `fetch failed` until `causeChain()` was added in
 
 Also verified 28 Aug 2026 against the live queue (56 open tickets): pagination
 pages on `nextPageToken`; the tier waterfall still partitions cleanly (56 in,
-56 out, no duplicates); tier 2 contains exactly the currently-breached set (26)
-with none outside it; and the 10 tickets whose only breaches are historic are
-correctly excluded.
+56 out, no duplicates); and the 10 tickets whose only breaches are historic are
+correctly excluded. (Tier 2's count was checked twice that day, before and
+after the paused-cycle correction in section 4 — see there for the current
+number; don't treat 26 as current if you see it quoted elsewhere in old notes.)
 
-**Still not verified end to end:** `JIRA_BASE` resolving from `/api/me`'s
-`siteUrl`. The code path and fallback were checked, and live Jira confirms the
-right base is `https://access4.atlassian.net/browse/`, but the resolved value
-has not been eyeballed in a running session.
+Confirmed in a running signed-in session on the same date: the dashboard
+reports all **56** open tickets (a truncating pager would stop at 50, since
+Jira's default page is 50 and shrinks further with 13 fields requested), and
+ticket keys link to `access4.atlassian.net/browse/…` — i.e. `JIRA_BASE` really
+does resolve from `/api/me`'s `siteUrl` rather than falling back. That session
+ran before the paused-cycle correction, so the breach tier it showed was the
+pre-correction 26, not the current 19 — worth another glance in the running
+app, though the tier-2 filter logic itself was re-verified against the same
+snapshot afterward (see section 4).
+
+**Still untested:** everything on the Historical tab. Its two queries use
+different field sets (`HIST_CREATED_FIELDS` / `HIST_RESOLVED_FIELDS`) and read
+`customfield_10690` (CSAT) and `customfield_10700`, none of which the live-queue
+path touches. Nothing has exercised those against the REST proxy.
 
 ## 7. Where things are
 
