@@ -141,7 +141,7 @@ The app refuses to start if a required variable is missing or if
 ## Layout
 
 ```
-server.js           OAuth flow, /api/me, /api/search proxy, static serving
+server.js           OAuth flow, /api/me, /api/search + /api/count + /api/issue proxies, static serving
 views/index.html    The dashboard (served only to signed-in users)
 public/login.html   Sign-in page (the only anonymous page)
 ```
@@ -158,13 +158,33 @@ served to anonymous visitors.
 | `GET /logout` | no | Destroys the session |
 | `GET /api/me` | yes | Signed-in user's `account_id`, `email`, `name` |
 | `POST /api/search` | yes | JQL proxy — `{jql, fields, maxResults, nextPageToken}` |
+| `POST /api/count` | yes | Approximate issue count for a JQL — `{jql}` → `{count}` |
+| `GET /api/issue/:key` | yes | One issue plus the first 100 changelog entries |
+| `GET /api/issue/:key/changelog` | yes | Changelog overflow — `?startAt=N` |
 | `GET /healthz` | no | Liveness probe |
 
-`/api/search` refuses any JQL that doesn't target `JIRA_PROJECT_KEY`. Treat that
+`/api/count` exists because `/rest/api/3/search/jql` returns no total, only a
+page token — so the Closed list has no other way to say "100 of 5,225". It
+proxies Jira's own `search/approximate-count`. Callers must treat a failure as
+non-fatal; the Closed list falls back to "more available".
+
+The two `/api/issue` routes exist for the ticket timeline, which needs the
+Jira changelog — something no list query returns. They pin the project by key
+shape (`TAC-<digits>`), which also means they refuse the other projects that
+turn up as linked issues (ESD, DEVX); those keys link out to Jira instead.
+
+`/api/search` and `/api/count` refuse any JQL that doesn't target
+`JIRA_PROJECT_KEY`. Treat that
 as tidiness rather than a security boundary — the real limit is the viewer's own
 Jira permissions, since queries run under their token.
 
 ## Changing the dashboard
+
+**Front-end changes need only a page reload; server changes need a restart.**
+`views/index.html` is sent with `res.sendFile` on every request, so editing
+it and reloading is enough. `server.js` is loaded once at boot — add or
+change a route without restarting and the page will call a route that is not
+there yet, which surfaces as "That API route does not exist on the server."
 
 `views/index.html` is self-contained: Chart.js, fonts and all logic are inlined,
 with no build step. Edit it and reload.
@@ -174,6 +194,12 @@ status filter are in the constants block near the top of the `<script>`.
 
 ## Known limits
 
+- **The Closed list is paged, and its filters only see what is loaded.** It
+  fetches ~100 tickets at a time rather than the whole range, because the
+  Apr–Jun 2026 migration bulk-close puts 5,225 closed tickets in a single
+  quarter. The assignee and TAC Tier filters therefore apply to the loaded
+  rows, not the whole range; the pager says so, and "Load all remaining"
+  walks the rest. Every other range in normal use is a single page.
 - **Sorting.** "Closest to going overdue" is computed in the browser across all
   six SLA fields, because Jira can't sort by the soonest of several SLAs.
 - **Wallboard on a TV.** Point a browser at the app and pick the Wallboard tab.

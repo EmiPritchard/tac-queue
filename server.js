@@ -234,6 +234,122 @@ app.post('/api/search', requireAuth, async (req, res) => {
   }
 });
 
+
+/**
+ * Approximate issue count for a JQL query. /rest/api/3/search/jql (what
+ * /api/search proxies) deliberately returns NO total — only a nextPageToken —
+ * so there is no way to say "showing 100 of 5227" from a page of results
+ * alone. This is the endpoint Jira provides for that number.
+ *
+ * "Approximate" is Jira's own word: the count comes from the search index and
+ * can lag a moment behind a just-resolved ticket. That is fine for a pager
+ * label and it is the only cheap answer — the alternative is walking every
+ * page, which is exactly what the Closed list's pager exists to avoid (the
+ * Apr–Jun 2026 migration bulk-close puts 5,227 tickets in one quarter).
+ *
+ * Callers must treat a failure here as non-fatal: the Closed list falls back
+ * to "N loaded, more available" and stays usable.
+ */
+app.post('/api/count', requireAuth, async (req, res) => {
+  const { jql } = req.body || {};
+  if (typeof jql !== 'string' || !jql.trim()) return res.status(400).json({ error: 'jql_required' });
+  // Same project pin as /api/search — a modified front-end must not be able to
+  // probe how many issues exist in other projects either.
+  if (!new RegExp(`project\s*=\s*${JIRA_PROJECT_KEY}\b`, 'i').test(jql)) {
+    return res.status(403).json({ error: 'project_not_allowed', message: `Queries must target project ${JIRA_PROJECT_KEY}.` });
+  }
+  try {
+    const r = await fetch(`https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/search/approximate-count`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${req.session.tokens.accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ jql }),
+    });
+    const text = await r.text();
+    if (!r.ok) {
+      console.error('[count]', r.status, text.slice(0, 300));
+      return res.status(r.status).json({ error: 'jira_error', status: r.status, message: text.slice(0, 300) });
+    }
+    res.type('application/json').send(text);
+  } catch (e) {
+    console.error('[count]', e.message);
+    res.status(502).json({ error: 'upstream', message: e.message });
+  }
+});
+
+// Single-issue read, for the ticket detail timeline. Two routes rather than
+// one because Jira splits the data that way:
+//
+//   /api/issue/:key            the issue plus the first page of its changelog
+//   /api/issue/:key/changelog  the rest of it, when there is more
+//
+// `expand=changelog` inlines at most 100 history entries and reports the real
+// figure in `changelog.total`, so anything longer has to be walked through the
+// dedicated endpoint. The split mirrors /api/search + jiraSearch(): the server
+// stays a thin proxy and the browser does the paging.
+//
+// The project pin here is a key-shape check rather than a JQL check. Note it
+// blocks the OTHER projects that show up as linked issues (ESD, DEVX, ...):
+// the timeline is for TAC tickets, and those keys already link out to Jira.
+const ISSUE_KEY_RE = new RegExp(`^${JIRA_PROJECT_KEY}-\\d{1,10}$`, 'i');
+
+// Everything the timeline reads. Wider than the list queries because it is one
+// issue, not a page of them — so page-shrinking does not apply. The three
+// "N.N TAC Owner" fields are the ones that make "when owners changed hands"
+// answerable: they are separate from `assignee` and are what the TAC workflow
+// actually moves between people.
+const DETAIL_FIELDS = [
+  'summary', 'status', 'priority', 'issuetype', 'assignee', 'reporter',
+  'created', 'updated', 'resolutiondate', 'resolution', 'issuelinks',
+  'customfield_10874',                                        // TAC Tier
+  'customfield_10859', 'customfield_10860', 'customfield_10861', // 1.5/2.0/2.5 TAC Owner
+  'customfield_10002', 'customfield_10854',                   // organisation, product
+  'customfield_10967', 'customfield_10968', 'customfield_10969',
+  'customfield_10970', 'customfield_10879', 'customfield_10906', // the six SLAs
+].join(',');
+
+async function jiraGet(req, res, path, label) {
+  try {
+    const r = await fetch(`https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/${path}`, {
+      headers: {
+        Authorization: `Bearer ${req.session.tokens.accessToken}`,
+        Accept: 'application/json',
+      },
+    });
+    const text = await r.text();
+    if (!r.ok) {
+      console.error(`[${label}]`, r.status, text.slice(0, 300));
+      return res.status(r.status).json({ error: 'jira_error', status: r.status, message: text.slice(0, 300) });
+    }
+    res.type('application/json').send(text);
+  } catch (e) {
+    console.error(`[${label}]`, e.message);
+    res.status(502).json({ error: 'upstream', message: e.message });
+  }
+}
+
+app.get('/api/issue/:key', requireAuth, async (req, res) => {
+  const key = String(req.params.key || '');
+  if (!ISSUE_KEY_RE.test(key)) {
+    return res.status(403).json({ error: 'issue_not_allowed', message: `Only ${JIRA_PROJECT_KEY} issues can be read.` });
+  }
+  await jiraGet(req, res,
+    `issue/${encodeURIComponent(key)}?expand=changelog&fields=${DETAIL_FIELDS}`, 'issue');
+});
+
+app.get('/api/issue/:key/changelog', requireAuth, async (req, res) => {
+  const key = String(req.params.key || '');
+  if (!ISSUE_KEY_RE.test(key)) {
+    return res.status(403).json({ error: 'issue_not_allowed', message: `Only ${JIRA_PROJECT_KEY} issues can be read.` });
+  }
+  const startAt = Math.max(0, Number(req.query.startAt) || 0);
+  await jiraGet(req, res,
+    `issue/${encodeURIComponent(key)}/changelog?startAt=${startAt}&maxResults=100`, 'changelog');
+});
+
 // ── Static app ───────────────────────────────────────────────────────────────
 // public/ holds only what an anonymous visitor may see (the sign-in page).
 // The dashboard shell lives outside it so it is never served statically.

@@ -329,6 +329,148 @@ body{
 .tt-ms-option:hover{background:var(--grey-100)}
 .tt-ms-option input{width:14px;height:14px;margin:0;cursor:pointer;accent-color:var(--sb-primary)}
 
+
+/* ═══ Closed list ═════════════════════════════════════════════════════════ */
+/* A breached row is tinted rather than badged-only, so a scan down the list
+   finds the misses without reading every SLA cell. Both rules have to repeat
+   the tint on hover, because `.tbl tbody tr:hover td` would otherwise win on
+   specificity and flip a red row grey exactly when the pointer is on it. */
+.tbl tbody tr.row-breach td{background:var(--red-10)}
+.tbl tbody tr.row-breach:hover td{background:var(--red-20)}
+/* The SLA picker lists six names, the longest being "First Response Time" —
+   too wide for the TAC Tier panel's 110px, hence its own width. */
+.tt-ms-panel.is-wide{min-width:210px}
+.cl-pager{
+  display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;
+  padding:var(--space-4) 0 0;
+}
+.cl-pager-note{font-size:13px;line-height:18px;color:var(--fg-3)}
+.cl-btn{
+  display:inline-flex;align-items:center;gap:7px;
+  font-family:inherit;font-size:13px;line-height:18px;font-weight:600;
+  color:var(--aa-primary);background:var(--bg-surface);
+  border:1px solid var(--border-default);border-radius:var(--radius-sm);
+  padding:7px 12px;cursor:pointer;
+  transition:border-color var(--motion-base),background-color var(--motion-base);
+}
+.cl-btn:hover:not(:disabled){border-color:var(--sb-primary);background:var(--primary-20)}
+.cl-btn:disabled{color:var(--fg-4);cursor:default;background:var(--disabled-bg)}
+.cl-btn .ico{flex:none}
+
+
+/* ═══ Ticket detail overlay ═══════════════════════════════════════════════ */
+/* Rows in every ticket table become clickable. The key inside stays a link to
+   Jira, so the row handler ignores clicks that land on an <a> or <button>. */
+.tbl tbody tr[data-ticket]{cursor:pointer}
+.td-scrim{
+  position:fixed;inset:0;z-index:100;
+  background:rgba(17,24,39,.45);
+  display:flex;align-items:flex-start;justify-content:center;
+  padding:var(--space-5);overflow-y:auto;
+}
+.td-modal{
+  background:var(--bg-surface);border-radius:var(--radius-md);
+  box-shadow:0 12px 40px rgba(17,24,39,.24);
+  width:100%;max-width:920px;margin:auto;
+  display:flex;flex-direction:column;
+}
+.td-head{
+  display:flex;align-items:flex-start;gap:var(--space-4);
+  padding:var(--space-5);border-bottom:1px solid var(--border-default);
+}
+.td-head-main{flex:1;min-width:0}
+.td-key{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:13px;line-height:18px;font-weight:600;
+  color:var(--sb-primary);text-decoration:none;
+}
+.td-key:hover{text-decoration:underline}
+.td-title{font-size:18px;line-height:26px;font-weight:600;color:var(--fg-1);margin-top:4px}
+.td-badges{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)}
+.td-body{padding:var(--space-5);overflow-y:auto}
+
+/* Facts grid — the current state, above the history */
+.td-facts{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:var(--space-3) var(--space-4);
+  padding-bottom:var(--space-5);margin-bottom:var(--space-5);
+  border-bottom:1px solid var(--border-default);
+}
+.td-fact-k{font-size:11px;line-height:16px;font-weight:600;color:var(--fg-4);text-transform:uppercase;letter-spacing:.04em}
+.td-fact-v{font-size:13px;line-height:18px;color:var(--fg-2);margin-top:2px;word-break:break-word}
+
+.td-section-h{
+  display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;
+  font-size:13px;line-height:18px;font-weight:600;color:var(--fg-1);
+  margin-bottom:var(--space-4);
+}
+.td-section-h .pc-checkbox{margin-left:auto;font-weight:500}
+
+/* Time in status — a horizontal proportional bar */
+.td-tis{margin-bottom:var(--space-5)}
+.td-tis-bar{display:flex;height:10px;border-radius:var(--radius-pill);overflow:hidden;background:var(--grey-100)}
+.td-tis-seg{height:100%}
+.td-tis-seg + .td-tis-seg{box-shadow:inset 1px 0 0 rgba(255,255,255,.65)}
+.td-tis-legend{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);margin-top:var(--space-3)}
+.td-tis-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:16px;color:var(--fg-3)}
+.td-tis-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.td-tis-item b{color:var(--fg-2);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* Timeline — a rail down the left with a marker per event */
+.td-tl{position:relative;padding-left:var(--space-5)}
+.td-tl::before{
+  content:'';position:absolute;left:5px;top:6px;bottom:6px;
+  width:2px;background:var(--grey-200);
+}
+.td-ev{position:relative;padding-bottom:var(--space-5)}
+.td-ev:last-child{padding-bottom:0}
+.td-ev-dot{
+  position:absolute;left:calc(-1 * var(--space-5) + 1px);top:4px;
+  width:10px;height:10px;border-radius:50%;
+  background:var(--grey-400);box-shadow:0 0 0 3px var(--bg-surface);
+}
+.td-ev.is-breach   .td-ev-dot{background:var(--sb-error-red)}
+.td-ev.is-sla      .td-ev-dot{background:var(--sb-primary)}
+.td-ev.is-owner    .td-ev-dot{background:var(--sb-lightblue)}
+.td-ev.is-created  .td-ev-dot{background:var(--sb-green)}
+.td-ev.is-resolved .td-ev-dot{background:var(--sb-green)}
+.td-ev-when{font-size:12px;line-height:16px;color:var(--fg-4);font-variant-numeric:tabular-nums}
+.td-ev-who{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:13px;line-height:18px;font-weight:600;color:var(--fg-2);
+}
+.td-ev-bot{
+  font-size:10px;line-height:14px;font-weight:600;letter-spacing:.03em;
+  color:var(--fg-3);background:var(--grey-100);border:1px solid var(--border-default);
+  border-radius:var(--radius-xs);padding:0 4px;text-transform:uppercase;
+}
+.td-ev-gap{font-size:11px;line-height:16px;color:var(--fg-4);font-style:italic}
+.td-ch{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-size:13px;line-height:20px}
+.td-ch-f{color:var(--fg-3)}
+.td-ch-v{
+  background:var(--grey-100);border-radius:var(--radius-xs);
+  padding:1px 6px;color:var(--fg-2);
+}
+.td-ch-v.is-none{color:var(--fg-4);font-style:italic}
+.td-ch-arrow{color:var(--fg-4);flex:none}
+.td-sla-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:5px;font-size:13px;line-height:20px}
+.td-sla-meta{color:var(--fg-3);font-variant-numeric:tabular-nums}
+
+/* ═══ Closed list KPI strip ═══════════════════════════════════════════════ */
+/* Its own grid class rather than reusing .tile-row, because renderDrill()
+   locates the live tab's drill panel with document.querySelector('.tile-row')
+   — a second .tile-row earlier in the document would send that panel into the
+   wrong tab. */
+.cl-kpis{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:var(--space-3);margin-bottom:var(--space-5);
+}
+/* These tiles are read-only. Plain .tile carries cursor:pointer and a hover
+   wash for the Historical tab's drillable ones, and both would promise a
+   click that does nothing here. */
+.tile.is-static{cursor:default;user-select:auto}
+.tile.is-static:hover{background:var(--bg-surface)}
+
 /* ═══ Personal mode ═══════════════════════════════════════════════════════ */
 .pm-toggle{
   display:inline-flex;align-items:center;gap:8px;
@@ -586,6 +728,7 @@ body{
   <div class="tabs">
     <button class="tab is-active" id="tab-live" onclick="switchTab('live')"></button>
     <button class="tab" id="tab-priority" onclick="switchTab('priority')"></button>
+    <button class="tab" id="tab-closed" onclick="switchTab('closed')"></button>
     <button class="tab" id="tab-hist" onclick="switchTab('hist')"></button>
     <button class="tab" id="tab-wall" onclick="switchTab('wall')"></button>
   </div>
@@ -597,6 +740,10 @@ body{
 
 <div id="view-priority" style="display:none">
   <div id="priority-root"><div class="loading-state"><div class="spinner"></div><span>Fetching live data from Jira&hellip;</span></div></div>
+</div>
+
+<div id="view-closed" style="display:none">
+  <div id="closed-root"></div>
 </div>
 
 <div id="view-hist" style="display:none">
@@ -658,6 +805,13 @@ function httpError(status, text) {
   const e = new Error(text || ('HTTP ' + status));
   if (status === 401) e.code = 'needs_reauth';
   else if (status === 403) e.code = 'blocked_by_policy';
+  // A 404 carrying no JSON body never reached a route handler: every route in
+  // server.js answers errors as JSON. In practice that means the running
+  // server predates the front-end asking for the route — views/index.html is
+  // re-read from disk per request, server.js is not. A real Jira 404 (issue
+  // deleted or invisible to this account) arrives as JSON, so it keeps the
+  // upstream_error path below and shows Jira's own message.
+  else if (status === 404 && !text) e.code = 'route_missing';
   else if (status >= 500) { e.code = 'server_unavailable'; e.retryable = true; }
   else e.code = 'upstream_error';
   return e;
@@ -667,6 +821,7 @@ function mcpErrorMessage(err) {
   switch (err && err.code) {
     case 'needs_reauth':       return 'Your session has expired. Reload the page to sign in again.';
     case 'blocked_by_policy':  return 'Your Jira account does not have permission to read this queue.';
+    case 'route_missing':      return 'That API route does not exist on the server. If the dashboard was updated recently, restart the server process — the page reloads from disk on every request, but server.js does not.';
     case 'server_unavailable': return 'Jira is temporarily unreachable. Retrying shortly.';
     case 'upstream_error':     return (err.message || 'Could not reach Jira.');
     default:                   return (err && err.message) || 'Could not reach Jira.';
@@ -757,17 +912,20 @@ const STATUS_COL = {
   'Requester Responded':'#FFCE32',    /* SB-Yellow    */
   'In Progress':'#2DCCD3',            /* SB-LightBlue */
   'Pending Response':'#244C5A',       /* SB-Secondary */
+  'Scheduled With Partner':'#4B5563', /* Grey 600     */
   'Awaiting external party':'#9CA3AF' /* Grey 400     */
 };
 const STATUS_BG = {
   'New':'#E8F5F8', 'Requester Responded':'#FFF1C2', 'In Progress':'#ECFBFB',
-  'Pending Response':'#EBEFF0', 'Awaiting external party':'#F3F4F6'
+  'Pending Response':'#EBEFF0', 'Awaiting external party':'#F3F4F6',
+  'Scheduled With Partner':'#EBEFF0'
 };
 const STATUS_FG = {
   'New':'#00738A', 'Requester Responded':'#8B6420', 'In Progress':'#0F6B70',
-  'Pending Response':'#244C5A', 'Awaiting external party':'#374151'
+  'Pending Response':'#244C5A', 'Awaiting external party':'#374151',
+  'Scheduled With Partner':'#374151'
 };
-const STATUS_ORDER = ['New','Requester Responded','In Progress','Pending Response','Awaiting external party'];
+const STATUS_ORDER = ['New','Requester Responded','In Progress','Pending Response','Scheduled With Partner','Awaiting external party'];
 const TYPE_COL = { Incident:'#D02D2D', Question:'#008EAA', Task:'#3CB24C', Billing:'#FFCE32', Porting:'#244C5A' };
 // AA-safe avatar hues drawn from the brand + accessibility palette
 const AV_COLS = ['#00738A','#244C5A','#297A34','#0F6B70','#B3261E','#4B5563'];
@@ -792,6 +950,15 @@ function priSolid(k) {
   if (/p3/i.test(k)) return '#FFCE32';
   if (/p4/i.test(k)) return '#008EAA';
   return '#9CA3AF';
+}
+// SLA attainment colour: >=90 green, >=70 amber, below that red. Shared by
+// the Historical tab's "SLA met" tile and the Closed tab's KPI strip so the
+// thresholds can only be changed in one place.
+function slaPctColour(pct) {
+  if (pct == null) return 'var(--fg-3)';
+  if (pct >= 90)  return 'var(--aa-green)';
+  if (pct >= 70)  return 'var(--sb-yellow-text)';
+  return 'var(--aa-red)';
 }
 function tally(arr, fn) { const m={}; for(const x of arr){const k=fn(x)||'Unknown';m[k]=(m[k]||0)+1;} return m; }
 function avg(arr) { const v=arr.filter(x=>x!=null); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; }
@@ -1021,6 +1188,7 @@ function paintChrome() {
   document.getElementById('brand-mark').innerHTML = brandMark(26);
   document.getElementById('tab-live').innerHTML = ico('gauge-high',15)        + '<span>Live queue</span>';
   document.getElementById('tab-priority').innerHTML = ico('triangle-exclamation',15) + '<span>Priority list</span>';
+  document.getElementById('tab-closed').innerHTML = ico('circle-check',15)    + '<span>Closed</span>';
   document.getElementById('tab-hist').innerHTML = ico('clock-rotate-left',15) + '<span>Historical</span>';
   document.getElementById('tab-wall').innerHTML = ico('desktop',15)           + '<span>Wallboard</span>';
   document.getElementById('btn-prev').innerHTML = ico('chevron-left',12)  + '<span>Previous</span>';
@@ -1029,19 +1197,20 @@ function paintChrome() {
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 let histEverLoaded=false;
+const TAB_LABELS = {live:'Live queue', priority:'Priority list', closed:'Closed', hist:'Historical', wall:'Wallboard'};
 function switchTab(tab) {
-  document.getElementById('view-live').style.display=tab==='live'?'':'none';
-  document.getElementById('view-priority').style.display=tab==='priority'?'':'none';
-  document.getElementById('view-hist').style.display=tab==='hist'?'':'none';
-  document.getElementById('view-wall').style.display=tab==='wall'?'':'none';
-  document.getElementById('tab-live').classList.toggle('is-active',tab==='live');
-  document.getElementById('tab-priority').classList.toggle('is-active',tab==='priority');
-  document.getElementById('tab-hist').classList.toggle('is-active',tab==='hist');
-  document.getElementById('tab-wall').classList.toggle('is-active',tab==='wall');
-  document.getElementById('view-badge').textContent=tab==='live'?'Live queue':tab==='priority'?'Priority list':tab==='hist'?'Historical':'Wallboard';
+  for (const t of Object.keys(TAB_LABELS)) {
+    document.getElementById('view-' + t).style.display = tab === t ? '' : 'none';
+    document.getElementById('tab-' + t).classList.toggle('is-active', tab === t);
+  }
+  document.getElementById('view-badge').textContent = TAB_LABELS[tab] || TAB_LABELS.live;
   document.body.style.padding=tab==='wall'?'0':'';
   document.getElementById('hdr').style.display=tab==='wall'?'none':'';
   if (tab==='hist'&&!histEverLoaded) { histEverLoaded=true; loadHistorical(); }
+  // The Closed list is the only view with its own Jira query, so it stays
+  // unfetched until somebody actually opens the tab — the live queue's own
+  // load is slow enough without a second pull racing it on every page view.
+  if (tab==='closed'&&!closedEverLoaded) { closedEverLoaded=true; loadClosed(false); }
   if (tab==='wall') setTimeout(renderWallboard, 50); // wait for display:block to take effect
 }
 function changeWeek(delta) {
@@ -1086,7 +1255,7 @@ function renderHistorical() {
   const slaT=histResolved.filter(i=>getSlaHistStatus(i).hasData);
   const slaMetN=slaT.filter(i=>getSlaHistStatus(i).met).length;
   const slaPct=slaT.length>0?Math.round(slaMetN/slaT.length*100):null;
-  const slaPctColor=slaPct==null?'var(--fg-3)':slaPct>=90?'var(--aa-green)':slaPct>=70?'var(--sb-yellow-text)':'var(--aa-red)';
+  const slaPctColor=slaPctColour(slaPct);
   const breachN=histResolved.filter(i=>getSlaHistStatus(i).breachedSlas.length>0).length;
   const resTimes=histResolved.map(getResTime).filter(x=>x!=null);
   const avgRes=avg(resTimes);
@@ -1183,7 +1352,7 @@ function openSubDrill(rowEl, drillType, name) {
   const rows = tickets.map(i => {
     const s = i.fields?.status?.name || '—';
     const p = i.fields?.priority?.name || '—', pc = priColor(p);
-    return `<tr>
+    return `<tr data-ticket="${esc(i.key)}">
       <td><a class="t-key" href="${JIRA_BASE}/${i.key}" target="_blank" rel="noopener">${esc(i.key)}</a></td>
       <td class="t-sum">${esc(i.fields?.summary || '—')}</td>
       <td>${badge(s, sBg(s), sFg(s), null, true)}</td>
@@ -1242,7 +1411,7 @@ function renderHistDrill(type) {
       const s=i.fields?.status?.name||'—';
       const org=(i.fields?.customfield_10002||[])[0]?.name||'—';
       const prod=i.fields?.customfield_10854?.value||'—';
-      return `<tr>
+      return `<tr data-ticket="${esc(i.key)}">
         <td><a class="t-key" href="${JIRA_BASE}/${i.key}" target="_blank" rel="noopener">${esc(i.key)}</a></td>
         <td class="t-sum">${esc(i.fields?.summary||'—')}</td>
         <td>${badge(s, sBg(s), sFg(s), null, true)}</td>
@@ -1270,7 +1439,7 @@ function renderHistDrill(type) {
       const tc=isFrt
         ?(t>14400000?'var(--aa-red)':t>7200000?'var(--sb-yellow-text)':'var(--aa-green)')
         :(t>86400000?'var(--aa-red)':t>28800000?'var(--sb-yellow-text)':'var(--aa-green)');
-      return `<tr>
+      return `<tr data-ticket="${esc(i.key)}">
         <td><a class="t-key" href="${JIRA_BASE}/${i.key}" target="_blank" rel="noopener">${esc(i.key)}</a></td>
         <td class="t-sum">${esc(i.fields?.summary||'—')}</td>
         <td class="t-sm">${esc(i.fields?.assignee?.displayName||'Unassigned')}</td>
@@ -1315,7 +1484,7 @@ function renderHistDrill(type) {
     count=withData.length;
     const mkRows=(arr,showBreach)=>arr.map(i=>{
       const info=getSlaHistStatus(i);
-      return `<tr>
+      return `<tr data-ticket="${esc(i.key)}">
         <td><a class="t-key" href="${JIRA_BASE}/${i.key}" target="_blank" rel="noopener">${esc(i.key)}</a></td>
         <td class="t-sum">${esc(i.fields?.summary||'—')}</td>
         <td class="t-sm">${esc(i.fields?.assignee?.displayName||'Unassigned')}</td>
@@ -1347,7 +1516,7 @@ function renderHistDrill(type) {
       const info=getSlaHistStatus(i), p=i.fields?.priority?.name||'—', pc=priColor(p);
       const severity=i.fields?.customfield_10700?.value||'—';
       const product=i.fields?.customfield_10854?.value||'—';
-      return `<tr>
+      return `<tr data-ticket="${esc(i.key)}">
         <td><a class="t-key" href="${JIRA_BASE}/${i.key}" target="_blank" rel="noopener">${esc(i.key)}</a></td>
         <td class="t-sum">${esc(i.fields?.summary||'—')}</td>
         <td>${badge(p, pc.bg, pc.fg)}</td>
@@ -1370,7 +1539,7 @@ function renderHistDrill(type) {
     const rows=tickets.map(i=>{
       const r=getCsat(i);
       const st = r>=4 ? {bg:'#EEF8EF',fg:'#297A34'} : r>=3 ? {bg:'#FFF1C2',fg:'#8B6420'} : {bg:'#F9DFDE',fg:'#B3261E'};
-      return `<tr>
+      return `<tr data-ticket="${esc(i.key)}">
         <td><a class="t-key" href="${JIRA_BASE}/${i.key}" target="_blank" rel="noopener">${esc(i.key)}</a></td>
         <td class="t-sum">${esc(i.fields?.summary||'—')}</td>
         <td class="t-sm">${esc(i.fields?.assignee?.displayName||'Unassigned')}</td>
@@ -1425,7 +1594,7 @@ const TICKET_THEAD = '<thead><tr><th>Key</th><th>Summary</th><th>Status</th>'
 function ticketRows(tickets) {
   return tickets.map(i=>{
     const s=i.fields?.status?.name||'—', p=i.fields?.priority?.name||'—', pc=priColor(p);
-    return `<tr>
+    return `<tr data-ticket="${esc(i.key)}">
       <td><a class="t-key" href="${JIRA_BASE}/${i.key}" target="_blank" rel="noopener">${esc(i.key)}</a></td>
       <td class="t-sum">${esc(i.fields?.summary||'—')}</td>
       <td>${badge(s, sBg(s), sFg(s), null, true)}</td>
@@ -1493,6 +1662,7 @@ function applyPersonalView() {
   paintPersonalBtn();
   if (RAW_ISSUES.length) render(ALL_ISSUES);
   if (histEverLoaded) renderHistorical();
+  if (closedEverLoaded) renderClosed();
   renderWallboard();
 }
 
@@ -1555,6 +1725,7 @@ async function togglePersonalMode(on) {
   personalMode = true;
   personalPrefSave(true);
   priorityAssignee = '';           // the manual picker is redundant once scoped to you
+  closedAssignee = '';             // ditto on the Closed list
   if (personalUser) { personalState = 'on'; applyPersonalView(); return; }
 
   personalState = 'loading'; personalError = ''; paintPersonalBtn();
@@ -1590,6 +1761,17 @@ const PRIORITY_TIERS = [
   { label:'In progress' },
   { label:'Everything else' },
 ];
+
+// Statuses meaning "parked on someone outside the TAC team", held out of the
+// P1/P2 tier and the three stale-priority tiers. 'Scheduled With Partner'
+// joined 'Pending Response' here on 4 Sep 2026: it was found in TAC-6225's
+// changelog, had no colour or tier treatment at all, and by the business's
+// reading is the same kind of wait.
+//
+// NOT the same as the Awaiting Internal/External Party statuses: those are
+// handled by the Priority list's hide-toggle and by tier ordering, not by
+// being excluded from tiers.
+const PARKED_STATUSES = new Set(['Pending Response', 'Scheduled With Partner']);
 
 function priorityRank(name) {
   const m = /p(\d)/i.exec(name || '');
@@ -1632,7 +1814,10 @@ function breachesTodayLondon(sla) {
 
 function buildPriorityList(issues) {
   let pool = issues.slice();
-  const notPendingResponse = i => (i.fields?.status?.name) !== 'Pending Response';
+  // Parked: the next action belongs to someone outside the TAC team, so the
+  // ticket must not be pulled up as an urgent P1/P2 or flagged as stale. It
+  // still appears in the list, just via a later tier.
+  const notParked = i => !PARKED_STATUSES.has(i.fields?.status?.name);
   const byOverdue = (a, b) => overdueSortKey(a) - overdueSortKey(b);
 
   function take(predicate, cmp) {
@@ -1646,9 +1831,9 @@ function buildPriorityList(issues) {
   }
 
   const groups = [
-    // 1. P1/P2 (excluding Pending Response) — P1 above P2, then oldest created first.
+    // 1. P1/P2 (excluding parked statuses) — P1 above P2, then oldest created first.
     take(
-      i => notPendingResponse(i) && /p[12]/i.test(i.fields?.priority?.name || ''),
+      i => notParked(i) && /p[12]/i.test(i.fields?.priority?.name || ''),
       (a, b) => priorityRank(a.fields?.priority?.name) - priorityRank(b.fields?.priority?.name)
              || new Date(a.fields?.created) - new Date(b.fields?.created)
     ),
@@ -1664,12 +1849,12 @@ function buildPriorityList(issues) {
     take(i => i.fields?.status?.name === 'Requester Responded', byOverdue),
     // 6. Ticking, breaching later today (paused excluded automatically; <1h already claimed above).
     take(i => { const s = resolveSla(i); return s?.type === 'ticking' && breachesTodayLondon(s); }, byOverdue),
-    // 7. P3, stale 24h+ (excluding Pending Response).
-    take(i => notPendingResponse(i) && /p3/i.test(i.fields?.priority?.name || '') && hoursSinceUpdate(i) > 24, byOverdue),
-    // 8. P4, stale 72h+ (excluding Pending Response).
-    take(i => notPendingResponse(i) && /p4/i.test(i.fields?.priority?.name || '') && hoursSinceUpdate(i) > 72, byOverdue),
-    // 9. P5, stale 7 days+ (excluding Pending Response).
-    take(i => notPendingResponse(i) && /p5/i.test(i.fields?.priority?.name || '') && hoursSinceUpdate(i) > 168, byOverdue),
+    // 7. P3, stale 24h+ (excluding parked statuses).
+    take(i => notParked(i) && /p3/i.test(i.fields?.priority?.name || '') && hoursSinceUpdate(i) > 24, byOverdue),
+    // 8. P4, stale 72h+ (excluding parked statuses).
+    take(i => notParked(i) && /p4/i.test(i.fields?.priority?.name || '') && hoursSinceUpdate(i) > 72, byOverdue),
+    // 9. P5, stale 7 days+ (excluding parked statuses).
+    take(i => notParked(i) && /p5/i.test(i.fields?.priority?.name || '') && hoursSinceUpdate(i) > 168, byOverdue),
     // 10. In Progress.
     take(i => i.fields?.status?.name === 'In Progress', byOverdue),
     // 11. Everything left.
@@ -1710,7 +1895,7 @@ function isLinkDone(link) { const o = otherIssueOf(link); return !!(o && o.field
 // is never "ready" by this rule — there's nothing to confirm against.
 function allLinksResolved(links) { return links.length > 0 && links.every(isLinkDone); }
 
-function linkDrillRow(issue, links) {
+function linkDrillRow(issue, links, cols) {
   const rows = links.map(l => {
     const other = otherIssueOf(l);
     if (!other) return '';
@@ -1725,7 +1910,7 @@ function linkDrillRow(issue, links) {
       <td>${badge(p, pc.bg, pc.fg)}</td>
     </tr>`;
   }).join('');
-  return `<tr class="link-drill-row"><td colspan="${PRIORITY_COLS}">
+  return `<tr class="link-drill-row"><td colspan="${cols || PRIORITY_COLS}">
     <div class="sub-drill">
       <div class="sub-drill-head"><div class="sub-drill-title">${ico('link',12)}Linked tickets — ${esc(issue.key)}</div></div>
       <div class="scroll-x"><table class="tbl">
@@ -1748,7 +1933,7 @@ function priorityRow(issue, rank) {
   const linkBtn = showLinks
     ? `<button class="link-btn${isOpen ? ' is-active' : ''}" title="${links.length} linked ticket${links.length !== 1 ? 's' : ''}" onclick="toggleLinkDrill('${esc(issue.key)}')">${ico('link', 10)}<span class="link-count">${links.length}</span></button>`
     : '';
-  const mainRow = `<tr>
+  const mainRow = `<tr data-ticket="${esc(issue.key)}">
     <td class="t-sm" style="text-align:right;color:var(--fg-4)">${rank}</td>
     <td><a class="t-key" href="${JIRA_BASE}/${issue.key}" target="_blank" rel="noopener">${esc(issue.key)}</a></td>
     <td class="t-sum">${esc(issue.fields?.summary || '—')}</td>
@@ -1758,7 +1943,7 @@ function priorityRow(issue, rank) {
     <td>${slaCell(issue)}</td>
     <td class="t-sm">${fmtShortDateTime(issue.fields?.updated)}</td>
   </tr>`;
-  return mainRow + (isOpen ? linkDrillRow(issue, links) : '');
+  return mainRow + (isOpen ? linkDrillRow(issue, links, PRIORITY_COLS) : '');
 }
 
 // Selected assignee for the Priority List ('' = everyone). Held at module
@@ -1811,8 +1996,22 @@ function onTacTierCheck(value, checked) {
 }
 // Closes the panel on any click outside it. Registered once at boot (see
 // bottom of file) rather than per-render, so it never piles up duplicates.
+//
+// Surgical on purpose: calling renderPriorityList() here would replace the
+// whole controls block, and when the click that closed the panel landed on
+// another control in that row it destroyed that control mid-click and the
+// click was swallowed. See closeClosedPanelsOnOutsideClick for the full note.
 function closeTacTierPanelOnOutsideClick() {
-  if (tacTierPanelOpen) { tacTierPanelOpen = false; renderPriorityList(ALL_ISSUES); }
+  if (!tacTierPanelOpen) return;
+  tacTierPanelOpen = false;
+  collapseMultiSelectPanels(document.getElementById('priority-root'));
+}
+// Drop the open panel and un-press its button inside `root`, touching nothing
+// else. The `is-open` class also drives the button's chevron rotation.
+function collapseMultiSelectPanels(root) {
+  if (!root) return;
+  root.querySelectorAll('.tt-ms-panel').forEach(p => p.remove());
+  root.querySelectorAll('.tt-ms-btn.is-open').forEach(b => b.classList.remove('is-open'));
 }
 
 function assigneeName(issue) {
@@ -1931,6 +2130,1169 @@ function renderPriorityTable(issues) {
 function onPriorityAssigneeChange(value) {
   priorityAssignee = value;
   renderPriorityTable(ALL_ISSUES);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Closed list ───────────────────────────────────────────────────────────────
+// Every closed/resolved ticket in a chosen window, newest close first.
+//
+// This is the one view that does NOT derive from the single live-queue fetch:
+// that pull is scoped to `resolution = Unresolved`, so closed tickets are
+// simply not in RAW_ISSUES. It runs its own query per date range, which is
+// also why it carries the only cache and the only pager in the dashboard.
+//
+// "Closed" is statusCategory = Done, NOT "has a resolution date". Seven TAC
+// tickets carry a resolution date but were later reopened into a live status
+// (TAC-6188, resolved 3 Sep, now Pending Response; also TAC-6214, TAC-6152,
+// TAC-6031, TAC-5990, TAC-5440, TAC-5400). Keying off `resolved IS NOT EMPTY`
+// would list those as closed while they are actively being worked. Note the
+// side effect: those seven are missing from the Live queue too, because its
+// JQL says `resolution = Unresolved` — so today they appear in NO view. That
+// is a pre-existing live-queue gap (see CLAUDE.md), not one this list added.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Jira's own `name` on each SLA object, confirmed against live payloads on
+// 4 Sep 2026 — used for the SLA picker and the breach tooltip. Never written
+// into JQL: the literal "Resolution" collides with Jira's built-in resolution
+// field there and silently matches nothing (CLAUDE.md section 3).
+const SLA_FIELD_NAMES = {
+  customfield_10967: 'First Response Time',
+  customfield_10968: 'Restoration',
+  customfield_10969: 'Resolution',
+  customfield_10970: 'Time with Agent',
+  customfield_10879: 'Triage target',
+  customfield_10906: 'Response Target',
+};
+
+// resolutiondate drives both the sort and the range filter. No 'created' or
+// 'updated': neither is displayed, and every extra field shrinks Jira's page
+// size, which costs pager round-trips directly on the big ranges.
+const CLOSED_FIELDS = ['summary','status','priority','assignee','resolutiondate','issuelinks',TAC_TIER_FIELD,...SLA_ALL];
+
+// ── Date ranges ───────────────────────────────────────────────────────────────
+// Every bound uses Jira's OWN date functions rather than a literal like
+// "2026-07-01". Two reasons: a literal is interpreted in the viewer's Jira
+// profile timezone, so hand-computing one in the browser drifts by the offset
+// between the two; and startOfWeek()/startOfMonth() are already the
+// convention in getJqlWeekFilter() for exactly that reason.
+//
+// Jira has no startOfQuarter(), so quarters are built from startOfMonth()
+// offsets — a quarter always begins on a month boundary, so the start of the
+// quarter containing today is startOfMonth(-(month % 3)). That keeps quarters
+// on the same timezone footing as everything else instead of mixing in
+// hand-rolled absolute dates.
+//
+// All the "Last N days" ranges include today, as asked: N days total means
+// today plus the N-1 before it, i.e. startOfDay(-(N-1)).
+const CLOSED_RANGES = [
+  { key:'currentDay',     label:'Current Day',     live:true,  jql:() => `resolved >= startOfDay()` },
+  { key:'currentWeek',    label:'Current Week',    live:true,  jql:() => `resolved >= startOfWeek()` },
+  { key:'currentMonth',   label:'Current Month',   live:true,  jql:() => `resolved >= startOfMonth()` },
+  { key:'currentQuarter', label:'Current Quarter', live:true,  jql:() => `resolved >= ${startOfQuarterJql(0)}` },
+  { key:'yesterday',      label:'Yesterday',       live:false, jql:() => `resolved >= startOfDay(-1) AND resolved < startOfDay()` },
+  { key:'lastWeek',       label:'Last Week',       live:false, jql:() => `resolved >= startOfWeek(-1) AND resolved < startOfWeek()` },
+  { key:'lastMonth',      label:'Last Month',      live:false, jql:() => `resolved >= startOfMonth(-1) AND resolved < startOfMonth()` },
+  { key:'lastQuarter',    label:'Last Quarter',    live:false, jql:() => `resolved >= ${startOfQuarterJql(-1)} AND resolved < ${startOfQuarterJql(0)}` },
+  { key:'last7',          label:'Last 7 days',     live:true,  jql:() => `resolved >= startOfDay(-6)` },
+  { key:'last14',         label:'Last 14 days',    live:true,  jql:() => `resolved >= startOfDay(-13)` },
+  { key:'last30',         label:'Last 30 days',    live:true,  jql:() => `resolved >= startOfDay(-29)` },
+  { key:'last60',         label:'Last 60 days',    live:true,  jql:() => `resolved >= startOfDay(-59)` },
+  { key:'last90',         label:'Last 90 days',    live:true,  jql:() => `resolved >= startOfDay(-89)` },
+];
+const CLOSED_RANGE_BY_KEY = Object.fromEntries(CLOSED_RANGES.map(r => [r.key, r]));
+
+// Months to step back to land on the first day of a quarter. `back` counts
+// whole quarters: 0 = the quarter containing today, -1 = the one before it.
+// London's month is used only to work out how far into the quarter we are — a
+// value that cannot differ from Jira's own answer by more than the few hours
+// either side of a month boundary, unlike a hand-built absolute date.
+function startOfQuarterJql(back) {
+  const month = Number(new Date().toLocaleDateString('en-GB', { timeZone:'Europe/London', month:'numeric' })) - 1;
+  const months = (month % 3) + (-back * 3);
+  return months === 0 ? 'startOfMonth()' : `startOfMonth(-${months})`;
+}
+// Human hint for the two quarter options only ("Jul – Sep 2026"), since
+// "Current Quarter" on its own leaves people guessing which months they are
+// looking at.
+function quarterHint(back) {
+  const now = new Date();
+  const month = Number(now.toLocaleDateString('en-GB', { timeZone:'Europe/London', month:'numeric' })) - 1;
+  const year  = Number(now.toLocaleDateString('en-GB', { timeZone:'Europe/London', year:'numeric' }));
+  const firstMonth = month - (month % 3) + (back * 3);
+  const start = new Date(Date.UTC(year, firstMonth, 1));
+  const end   = new Date(Date.UTC(year, firstMonth + 2, 1));
+  const m = d => d.toLocaleDateString('en-GB', { timeZone:'UTC', month:'short' });
+  return `${m(start)} – ${m(end)} ${end.getUTCFullYear()}`;
+}
+function closedRangeHint(key) {
+  if (key === 'currentQuarter') return quarterHint(0);
+  if (key === 'lastQuarter')    return quarterHint(-1);
+  return '';
+}
+
+function closedJql(rangeKey) {
+  const r = CLOSED_RANGE_BY_KEY[rangeKey] || CLOSED_RANGE_BY_KEY.currentDay;
+  // statusCategory = Done is the "closed or resolved" test — see the header
+  // note on why, and on the seven reopened tickets it deliberately excludes.
+  // TP_FILTER is kept for consistency with the other three views; against
+  // live data it excludes nothing from the closed set (387 of 387 over 90
+  // days), so it costs nothing here and would matter silently if the Third
+  // Party Status values ever changed.
+  return `project = TAC AND statusCategory = Done AND ${r.jql()} AND ${TP_FILTER} ORDER BY resolved DESC`;
+}
+
+// ── SLA breach state for a closed ticket ──────────────────────────────────────
+// resolveSla() answers "is this breaching RIGHT NOW", which every closed
+// ticket answers 'completed' to — its clocks have all stopped. The only
+// meaningful question here is "did it ever miss", so this reads
+// completedCycles too, the same way the Historical tab's getSlaHistStatus()
+// does.
+//
+// Which clocks count is the viewer's choice (selectedClosedSlas), because the
+// six differ a lot in strictness: on the 13 tickets closed in the three days
+// to 4 Sep 2026, the three headline SLAs put 6 in breach while all six put
+// 10 in breach. Defaults to all six.
+function slaEverBreached(issue, field) {
+  const s = issue.fields?.[field];
+  if (!s) return false;
+  return (s.completedCycles || []).some(c => c.breached) || !!(s.ongoingCycle && s.ongoingCycle.breached);
+}
+// Which of the SELECTED SLAs this ticket missed, plus whether it carried data
+// for any of them at all — a ticket with no SLA data is neither met nor
+// breached and must not be painted green.
+function closedSlaState(issue) {
+  const chosen = SLA_ALL.filter(f => selectedClosedSlas.has(f));
+  const hasData = chosen.some(f => issue.fields?.[f]);
+  const breached = chosen.filter(f => slaEverBreached(issue, f)).map(f => SLA_FIELD_NAMES[f]);
+  return { hasData, breached, met: hasData && breached.length === 0 };
+}
+function closedSlaCell(issue) {
+  const st = closedSlaState(issue);
+  if (!st.hasData) return `<span style="color:var(--grey-300)">—</span>`;
+  if (st.breached.length) {
+    return `<span class="badge badge-pill" title="${esc('Breached: ' + st.breached.join(', '))}" style="background:var(--red-20);color:var(--aa-red)">`
+         + ico('circle-exclamation', 12) + `Breached${st.breached.length > 1 ? ' ×' + st.breached.length : ''}</span>`;
+  }
+  return `<span class="badge badge-pill" title="No breach on the selected SLAs" style="background:var(--green-30);color:var(--aa-green)">`
+       + ico('circle-check', 12) + `Met</span>`;
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+let closedRange    = 'currentDay';   // the default the business asked for
+let closedAssignee = '';             // '' = everyone
+let closedTacTiers = new Set(TAC_TIER_OPTIONS);
+let selectedClosedSlas = new Set(SLA_ALL);
+let closedPanelOpen = null;          // 'tier' | 'sla' | null — only one at a time
+let closedBusy  = false;
+let closedError = '';
+let closedEverLoaded = false;
+let expandedClosedLinks = new Set();
+
+// ── Cache ─────────────────────────────────────────────────────────────────────
+// Jira is slow enough that flipping between ranges unmemoised is painful, so
+// each range keeps the pages it has fetched. Two deliberate limits, because
+// caching a closed queue is easy to overdo:
+//
+//  - TTL by range kind. A range that includes today keeps changing, so it
+//    goes stale fast; a range wholly in the past can only change if somebody
+//    edits a resolution date, so it holds much longer. Neither is forever,
+//    and nothing is written to localStorage — a stale closed list read off
+//    disk on the next visit would be worse than a slow fresh one.
+//  - At most CLOSED_CACHE_MAX ranges are retained, evicting least-recently-
+//    used. Last Quarter alone can hold thousands of issues with their SLA
+//    payloads; keeping every range anyone clicked would grow without bound.
+const CLOSED_TTL_LIVE = 2 * 60 * 1000;   // includes today — expect churn
+const CLOSED_TTL_PAST = 30 * 60 * 1000;  // finished period — near-immutable
+const CLOSED_CACHE_MAX = 4;
+const closedCache = new Map();  // rangeKey -> {issues, nextToken, total, fetchedAt}
+
+function closedTtl(rangeKey) {
+  return CLOSED_RANGE_BY_KEY[rangeKey]?.live ? CLOSED_TTL_LIVE : CLOSED_TTL_PAST;
+}
+function closedCacheGet(rangeKey) {
+  const e = closedCache.get(rangeKey);
+  if (!e) return null;
+  if (Date.now() - e.fetchedAt > closedTtl(rangeKey)) { closedCache.delete(rangeKey); return null; }
+  // Re-insert to mark most-recently-used (a Map preserves insertion order).
+  closedCache.delete(rangeKey); closedCache.set(rangeKey, e);
+  return e;
+}
+function closedCacheSet(rangeKey, entry) {
+  closedCache.delete(rangeKey);
+  closedCache.set(rangeKey, entry);
+  while (closedCache.size > CLOSED_CACHE_MAX) closedCache.delete(closedCache.keys().next().value);
+}
+
+// ── Fetching ─────────────────────────────────────────────────────────────────
+// One page of OUR pager, not one Jira page. Jira routinely returns far fewer
+// rows than maxResults — it shrinks pages when many fields are requested, and
+// CLOSED_FIELDS asks for 13 — so a single call would hand back an
+// unpredictable handful. This walks nextPageToken until it has
+// AT LEAST CLOSED_PAGE_SIZE rows, or Jira runs out. "At least": the running
+// total is tested after each append and a Jira page cannot be resumed
+// halfway, so one pager page overshoots by up to one Jira page. That is why
+// the button says "Load more" instead of promising a number — the note under
+// it reports what actually landed.
+//
+// Only a null/absent nextPageToken ends the walk (jiraNextCursor encodes that
+// rule): `isLast` is not a required field in the published schema, and paging
+// off it truncated the live queue once already.
+const CLOSED_PAGE_SIZE = 100;
+
+async function fetchClosedPage(rangeKey, cursor) {
+  const jql = closedJql(rangeKey);
+  const out = [];
+  let next = cursor || undefined;
+  do {
+    const params = { cloudId: CLOUD, jql, fields: CLOSED_FIELDS, maxResults: 100 };
+    if (next) params.nextPageToken = next;
+    let result;
+    try { result = await callSearchTool(params); }
+    catch (err) { throw new Error(mcpErrorMessage(err)); }
+    const r = parseJira(result);
+    out.push(...jiraIssueNodes(r));
+    next = jiraNextCursor(r);
+  } while (next && out.length < CLOSED_PAGE_SIZE);
+  return { issues: out, nextToken: next || null };
+}
+
+// The pager label ("100 of 5,227") needs a total, and /rest/api/3/search/jql
+// deliberately returns none — only a token. /api/count asks Jira's own
+// approximate-count endpoint for it. Non-fatal by design: on failure the
+// pager falls back to "more available" and the list stays usable.
+async function fetchClosedTotal(rangeKey) {
+  try {
+    const j = await apiFetch('/api/count', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jql: closedJql(rangeKey) }),
+    });
+    return typeof j?.count === 'number' ? j.count : null;
+  } catch (e) { return null; }
+}
+
+async function loadClosed(force) {
+  const rangeKey = closedRange;
+  if (!force) {
+    const hit = closedCacheGet(rangeKey);
+    if (hit) { closedError = ''; renderClosed(); return; }
+  }
+  if (force) closedCache.delete(rangeKey);
+  closedBusy = true; closedError = ''; expandedClosedLinks = new Set();
+  renderClosed();
+  try {
+    const page = await fetchClosedPage(rangeKey, null);
+    // The count runs after the first page rather than alongside it: the page
+    // is what the viewer is waiting to see, and a range with nothing closed
+    // in it needs no total at all.
+    const total = await fetchClosedTotal(rangeKey);
+    // The range may have been switched again while this was in flight, so
+    // store the result under the range it was fetched FOR and only repaint if
+    // that is still the one on screen.
+    closedCacheSet(rangeKey, { issues: page.issues, nextToken: page.nextToken, total, fetchedAt: Date.now() });
+  } catch (err) {
+    if (rangeKey === closedRange) closedError = err.message;
+  } finally {
+    if (rangeKey === closedRange) { closedBusy = false; renderClosed(); }
+  }
+}
+
+async function loadMoreClosed(all) {
+  const rangeKey = closedRange;
+  const entry = closedCacheGet(rangeKey);
+  if (!entry || !entry.nextToken || closedBusy) return;
+  closedBusy = true; closedError = ''; renderClosed();
+  try {
+    do {
+      const page = await fetchClosedPage(rangeKey, entry.nextToken);
+      entry.issues = entry.issues.concat(page.issues);
+      entry.nextToken = page.nextToken;
+      // Keep the growing entry in the cache and refresh its stamp, so a long
+      // "Load all" on a 2-minute-TTL range cannot expire out from under the
+      // walk it is in the middle of.
+      entry.fetchedAt = Date.now();
+      closedCacheSet(rangeKey, entry);
+      if (rangeKey === closedRange) renderClosed();
+    } while (all && entry.nextToken && rangeKey === closedRange);
+  } catch (err) {
+    if (rangeKey === closedRange) closedError = err.message;
+  } finally {
+    if (rangeKey === closedRange) { closedBusy = false; renderClosed(); }
+  }
+}
+
+// ── Controls ─────────────────────────────────────────────────────────────────
+function onClosedRangeChange(value) {
+  closedRange = value;
+  closedAssignee = '';   // the previously picked person may not appear in the new window
+  loadClosed(false);
+}
+function onClosedAssigneeChange(value) { closedAssignee = value; renderClosedTable(); }
+function onClosedRefresh() { loadClosed(true); }
+
+// Both Closed-tab panels share one open slot, so opening the SLA picker
+// closes the tier one rather than stacking two overlapping panels.
+function toggleClosedPanel(which, e) {
+  e.stopPropagation();
+  closedPanelOpen = closedPanelOpen === which ? null : which;
+  renderClosed();
+}
+// Closing a panel must not rebuild the Closed tab's controls block. Doing so
+// replaces the element the in-flight click is being delivered to, which
+// silently swallowed clicks on the "Show summary" tickbox, the assignee select
+// and Refresh whenever a panel happened to be open: a checkbox's checkedness
+// flips before dispatch, but its `change` event fires in the activation
+// behaviour that runs *after* the click finishes propagating — and by then the
+// element has been detached, so the handler never reaches the app. Caught
+// 4 Sep 2026 while testing the KPI tickbox, which sits next to the SLA panel
+// and so is the likeliest control to be clicked with one open.
+function closeClosedPanelsOnOutsideClick() {
+  if (!closedPanelOpen) return;
+  closedPanelOpen = null;
+  collapseMultiSelectPanels(document.getElementById('closed-root'));
+}
+// Same "all selected means unfiltered" rule as the Priority list's tier
+// filter: a tier value this build has never seen must not vanish just because
+// the default state does not name it.
+function closedMatchesTacTier(issue) {
+  return closedTacTiers.size === TAC_TIER_OPTIONS.length || closedTacTiers.has(tacTierOf(issue));
+}
+function onClosedTierCheck(value, checked) {
+  if (checked) closedTacTiers.add(value); else closedTacTiers.delete(value);
+  renderClosed();
+}
+// The SLA picker chooses which clocks count towards the red highlight and the
+// SLA cell. It deliberately does NOT drop rows: "pick which ones to show"
+// scopes the breach test, so a ticket that missed nothing you selected still
+// belongs in a list of what closed.
+function onClosedSlaCheck(field, checked) {
+  if (checked) selectedClosedSlas.add(field); else selectedClosedSlas.delete(field);
+  renderClosed();
+}
+function closedTierButtonLabel() {
+  if (closedTacTiers.size === TAC_TIER_OPTIONS.length) return 'TAC Tier: All';
+  if (closedTacTiers.size === 0) return 'TAC Tier: None';
+  return 'TAC Tier: ' + TAC_TIER_OPTIONS.filter(t => closedTacTiers.has(t)).join(', ');
+}
+// Six names, the longest 19 characters, so spelling out the selection would
+// make this button wider than the whole rest of the control row. A count
+// reads at a glance instead; the panel shows which.
+function closedSlaButtonLabel() {
+  if (selectedClosedSlas.size === SLA_ALL.length) return 'SLA: All 6';
+  if (selectedClosedSlas.size === 0) return 'SLA: None';
+  return `SLA: ${selectedClosedSlas.size} of ${SLA_ALL.length}`;
+}
+
+function closedMultiSelect(which, label, options) {
+  const open = closedPanelOpen === which;
+  return `<div class="tt-multiselect">
+       <button type="button" class="tt-ms-btn${open ? ' is-open' : ''}" onclick="toggleClosedPanel('${which}', event)">
+         <span>${esc(label)}</span>${ico('chevron-down', 10)}
+       </button>
+       ${open ? `<div class="tt-ms-panel${which === 'sla' ? ' is-wide' : ''}" onclick="event.stopPropagation()">
+         ${options}
+       </div>` : ''}
+     </div>`;
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+const CLOSED_THEAD = '<thead><tr><th>Key</th><th>Summary</th><th>Status</th>'
+                   + '<th>Priority</th><th>Assignee</th><th>Tier</th><th>SLA</th>'
+                   + `<th>Closed <span class="sort-ind">${ico('chevron-down',9)}</span></th></tr></thead>`;
+const CLOSED_COLS = 8; // keep in sync with CLOSED_THEAD — the link-drill colspan
+
+function toggleClosedLinkDrill(key) {
+  if (expandedClosedLinks.has(key)) expandedClosedLinks.delete(key);
+  else expandedClosedLinks.add(key);
+  renderClosedTable();
+}
+
+function closedRow(issue) {
+  const s = issue.fields?.status?.name || '—', p = issue.fields?.priority?.name || '—', pc = priColor(p);
+  const links = Array.isArray(issue.fields?.issuelinks) ? issue.fields.issuelinks : [];
+  const isOpen = expandedClosedLinks.has(issue.key);
+  const st = closedSlaState(issue);
+  // The link control appears whenever there is something to show. Unlike the
+  // Priority list it is not gated on a status: there, the point is that an
+  // Awaiting Internal Team ticket with NO links is itself worth surfacing, so
+  // the button shows a zero. Here a closed ticket with no linked work is
+  // simply unremarkable, and a column of "0" buttons would be noise.
+  const linkBtn = links.length
+    ? `<button class="link-btn${isOpen ? ' is-active' : ''}" title="${links.length} linked work item${links.length !== 1 ? 's' : ''}" onclick="toggleClosedLinkDrill('${esc(issue.key)}')">${ico('link', 10)}<span class="link-count">${links.length}</span></button>`
+    : '';
+  const main = `<tr data-ticket="${esc(issue.key)}"${st.breached.length ? ' class="row-breach"' : ''}>
+    <td><a class="t-key" href="${JIRA_BASE}/${issue.key}" target="_blank" rel="noopener">${esc(issue.key)}</a></td>
+    <td class="t-sum">${esc(issue.fields?.summary || '—')}</td>
+    <td>${badge(s, sBg(s), sFg(s), null, true)}${linkBtn}</td>
+    <td>${badge(p, pc.bg, pc.fg)}</td>
+    <td class="t-sm">${esc(issue.fields?.assignee?.displayName || 'Unassigned')}</td>
+    <td class="t-sm">${esc(tacTierOf(issue) || '—')}</td>
+    <td>${closedSlaCell(issue)}</td>
+    <td class="t-sm">${fmtShortDateTime(issue.fields?.resolutiondate)}</td>
+  </tr>`;
+  return main + (isOpen ? linkDrillRow(issue, links, CLOSED_COLS) : '');
+}
+
+// ── Closed list: KPI summary strip ───────────────────────────────────────────
+// Off by default, revealed by the "Show summary" tickbox, and it summarises
+// exactly the rows the current filters are showing — the same `shown` array
+// the table renders, so personal mode, the assignee picker and the TAC Tier
+// filter all feed straight into it.
+//
+// Deliberately NOT affected by the SLA multi-select: that control scopes which
+// clocks turn a row red, whereas these tiles report four SLAs by name. Letting
+// the picker blank out a named tile would be a different feature.
+//
+// "% Solved by First Agent" was asked for and then withdrawn — the honest
+// answers available from list data are all proxies (never-escalated-past-1.5,
+// or the TAC Tier field, which disagree with each other on real tickets) and a
+// true per-agent measure needs the changelog, i.e. one request per ticket.
+// Left out until there is a definition worth trusting.
+const CLOSED_KPI_SLAS = [
+  { field: 'customfield_10879', label: 'SLA Triage' },
+  { field: 'customfield_10967', label: 'SLA First Response' },
+  { field: 'customfield_10906', label: 'SLA Response' },
+  { field: 'customfield_10969', label: 'SLA Resolution' },
+];
+
+let showClosedKpis = false;
+function onShowClosedKpisChange(checked) {
+  showClosedKpis = checked;
+  renderClosedTable();
+}
+
+// Attainment for one SLA across a set of tickets: met / had-data.
+//
+// The denominator is tickets that actually carry a cycle for that SLA, not the
+// whole set — a ticket with no Response Target cycle has neither met nor
+// missed it, and counting it either way would be a lie. The tile prints the
+// denominator for that reason. On the 47 tickets closed in the 14 days to
+// 4 Sep 2026 all four SLAs happened to be present on every ticket, but
+// Restoration was absent on 8 of 13 in an earlier sample, so uneven
+// denominators are real.
+//
+// "Met" is ticket-level: any breached cycle counts the ticket as missed, which
+// is how the Historical tab's SLA figure already works. It matters only for
+// Response Target, the one SLA that runs repeatedly (15 of 47 tickets had more
+// than one cycle) — and measured per-cycle instead that sample gave 72% too,
+// the same answer, so the two definitions are not far apart in practice.
+function closedSlaAttainment(tickets, field) {
+  const withData = tickets.filter(i => i.fields?.[field]);
+  const met = withData.filter(i => !slaEverBreached(i, field)).length;
+  return {
+    withData: withData.length,
+    met,
+    noData: tickets.length - withData.length,
+    pct: withData.length ? Math.round(met / withData.length * 100) : null,
+  };
+}
+
+// Overall SLA attainment across whatever the SLA multi-select has selected,
+// counted **per ticket**: a ticket that misses ANY selected SLA is a breached
+// ticket, however many of its other clocks were met. Ten tickets with one
+// bad ticket is 90%.
+//
+// This is the one tile that follows that picker — the four named tiles below
+// are fixed by definition, and this answers "what proportion of these tickets
+// came out clean across the clocks I care about".
+//
+// The breach test is `closedSlaState()`, the same call that decides whether a
+// row is tinted red, so this figure is exactly 100% minus the proportion of
+// red rows. Tying it to the row highlighting rather than recomputing is the
+// point: a headline number that disagreed with the rows underneath it would be
+// worse than no number.
+//
+// The denominator is every ticket shown, not just those carrying SLA data — a
+// ticket with no SLA at all breaches nothing and so counts as clean. No such
+// ticket exists in TAC today (all 47 closed in the fortnight to 4 Sep 2026
+// carried all six clocks), but the sub-line reports the count if any turn up,
+// because silently counting them as successes would flatter the number.
+//
+// Superseded: this started out aggregating ticket-SLA pairs — the per-SLA
+// numerators and denominators summed, giving 224 of 282 = 79% on that sample.
+// That is a different question ("what proportion of all SLA measurements were
+// met") and the business wanted this one, which is 21 of 47 = 45% on the same
+// data. Being lower than every component tile is expected, not a bug:
+// requiring a ticket to meet ALL selected SLAs is strictly harder than
+// meeting any one of them.
+function closedSlaTotal(tickets) {
+  const slaCount = SLA_ALL.filter(f => selectedClosedSlas.has(f)).length;
+  // With nothing selected there is no question to answer. Guarded first
+  // because closedSlaState() finds no breaches in that state, which would
+  // otherwise read as a perfect 100%.
+  if (!slaCount) return { clean: 0, breached: 0, total: tickets.length, noData: 0, slaCount: 0, pct: null };
+  const breached = tickets.filter(i => closedSlaState(i).breached.length > 0).length;
+  const noData = tickets.filter(i => !closedSlaState(i).hasData).length;
+  return {
+    clean: tickets.length - breached,
+    breached,
+    total: tickets.length,
+    noData,
+    slaCount,
+    pct: tickets.length ? Math.round((tickets.length - breached) / tickets.length * 100) : null,
+  };
+}
+
+function closedKpiHtml(shown, entry) {
+  const rangeLabel = (CLOSED_RANGE_BY_KEY[closedRange]?.label || '').toLowerCase();
+  // Say what the number is over. When the pager still has rows to fetch, every
+  // tile here describes the loaded slice rather than the whole range, and that
+  // has to be on screen next to the figures rather than only in the pager.
+  const partial = !!entry.nextToken;
+  const totalSub = partial
+    ? `${rangeLabel} · ${entry.issues.length.toLocaleString('en-GB')} of `
+      + `${entry.total != null ? entry.total.toLocaleString('en-GB') : 'more'} loaded`
+    : rangeLabel;
+
+  const tiles = [`<div class="tile is-static">
+      <div class="tile-header">Total closed</div>
+      <div class="tile-count">${shown.length.toLocaleString('en-GB')}</div>
+      <div class="tile-sub">${esc(totalSub)}</div>
+    </div>`];
+
+  const tot = closedSlaTotal(shown);
+  const totSub = tot.slaCount === 0
+    ? 'no SLAs selected'
+    : tot.total
+      ? `${tot.clean} of ${tot.total} met all · ${tot.slaCount} SLA${tot.slaCount !== 1 ? 's' : ''}`
+        + (tot.noData ? ` · ${tot.noData} no SLA data` : '')
+      : `${tot.slaCount} SLA${tot.slaCount !== 1 ? 's' : ''} selected`;
+  tiles.push(`<div class="tile is-static">
+      <div class="tile-header">SLA Total</div>
+      <div class="tile-count" style="color:${slaPctColour(tot.pct)}">${tot.pct != null ? tot.pct + '%' : '—'}</div>
+      <div class="tile-sub">${esc(totSub)}</div>
+    </div>`);
+
+  for (const { field, label } of CLOSED_KPI_SLAS) {
+    const a = closedSlaAttainment(shown, field);
+    const sub = a.withData
+      ? `${a.met} of ${a.withData} met` + (a.noData ? ` · ${a.noData} no data` : '')
+      : 'no SLA data';
+    tiles.push(`<div class="tile is-static">
+      <div class="tile-header">${esc(label)}</div>
+      <div class="tile-count" style="color:${slaPctColour(a.pct)}">${a.pct != null ? a.pct + '%' : '—'}</div>
+      <div class="tile-sub">${esc(sub)}</div>
+    </div>`);
+  }
+  return `<div class="cl-kpis">${tiles.join('')}</div>`;
+}
+
+function renderClosed() {
+  const el = document.getElementById('closed-root');
+  if (!el) return;
+  const entry = closedCacheGet(closedRange);
+
+  const rangeOptions = CLOSED_RANGES.map(r => {
+    const hint = closedRangeHint(r.key);
+    return `<option value="${r.key}"${r.key === closedRange ? ' selected' : ''}>`
+         + esc(r.label) + (hint ? ` (${esc(hint)})` : '') + `</option>`;
+  }).join('');
+
+  // Assignee options come from the loaded set, which is all this view has —
+  // see the pager note about filters only seeing what is loaded.
+  const loaded = entry ? personalFilter(entry.issues) : [];
+  const counts = tally(loaded, assigneeName);
+  const names = Object.keys(counts).sort((a, b) =>
+    a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b));
+  if (closedAssignee && !counts[closedAssignee]) closedAssignee = '';
+  const assigneeOptions = [`<option value="">All assignees (${loaded.length})</option>`]
+    .concat(names.map(n => `<option value="${esc(n)}"${n === closedAssignee ? ' selected' : ''}>${esc(n)} (${counts[n]})</option>`))
+    .join('');
+
+  const tierPanel = TAC_TIER_OPTIONS.map(t => `<label class="tt-ms-option">
+           <input type="checkbox" ${closedTacTiers.has(t) ? 'checked' : ''} onchange="onClosedTierCheck('${t}', this.checked)">
+           <span>${esc(t)}</span>
+         </label>`).join('');
+  const slaPanel = SLA_ALL.map(f => `<label class="tt-ms-option">
+           <input type="checkbox" ${selectedClosedSlas.has(f) ? 'checked' : ''} onchange="onClosedSlaCheck('${f}', this.checked)">
+           <span>${esc(SLA_FIELD_NAMES[f] || f)}</span>
+         </label>`).join('');
+
+  const assigneeControl = (personalMode && personalUser)
+    ? `<span class="pm-chip">${ico('user',11)}Your tickets only</span>`
+    : `<label class="pc-label" for="closed-assignee">Assignee</label>
+       <div class="pc-select-wrap">
+         <select class="pc-select" id="closed-assignee" onchange="onClosedAssigneeChange(this.value)">${assigneeOptions}</select>
+         ${ico('chevron-down', 10)}
+       </div>`;
+
+  el.innerHTML = `
+    ${personalBanner()}
+    <div class="priority-controls">
+      <label class="pc-label" for="closed-range">Closed</label>
+      <div class="pc-select-wrap">
+        <select class="pc-select" id="closed-range" onchange="onClosedRangeChange(this.value)">${rangeOptions}</select>
+        ${ico('chevron-down', 10)}
+      </div>
+      ${assigneeControl}
+      ${closedMultiSelect('tier', closedTierButtonLabel(), tierPanel)}
+      ${closedMultiSelect('sla', closedSlaButtonLabel(), slaPanel)}
+      <label class="pc-checkbox">
+        <input type="checkbox" ${showClosedKpis ? 'checked' : ''} onchange="onShowClosedKpisChange(this.checked)">
+        <span>Show summary</span>
+      </label>
+      <button class="cl-btn" onclick="onClosedRefresh()"${closedBusy ? ' disabled' : ''} title="Discard the cached result for this range and re-query Jira">
+        <span>${closedBusy ? 'Refreshing…' : 'Refresh'}</span>
+      </button>
+      <span class="priority-summary" id="closed-summary"></span>
+    </div>
+    ${closedError ? errorHtml(closedError) : ''}
+    <div id="closed-table"></div>`;
+
+  if (!entry) {
+    document.getElementById('closed-table').innerHTML = closedBusy
+      ? '<div class="loading-state"><div class="spinner"></div><span>Loading closed tickets…</span></div>'
+      : (closedError ? '' : '<div class="empty">No data loaded.</div>');
+    return;
+  }
+  renderClosedTable();
+}
+
+function renderClosedTable() {
+  const table   = document.getElementById('closed-table');
+  const summary = document.getElementById('closed-summary');
+  if (!table) return;
+  const entry = closedCacheGet(closedRange);
+  if (!entry) return;
+
+  const loadedAll = personalFilter(entry.issues);
+  let shown = closedAssignee ? loadedAll.filter(i => assigneeName(i) === closedAssignee) : loadedAll;
+  shown = shown.filter(closedMatchesTacTier);
+  // Jira already returns ORDER BY resolved DESC, but the pager concatenates
+  // pages and the filters above reorder nothing — sorting anyway makes
+  // "most recent at the top" hold however the set was assembled.
+  shown = shown.slice().sort((a, b) =>
+    new Date(b.fields?.resolutiondate || 0) - new Date(a.fields?.resolutiondate || 0));
+
+  const breachedN = shown.filter(i => closedSlaState(i).breached.length).length;
+  // Built before the early return below so the strip shows on an empty result
+  // too — "Total closed 0" for a filter combination is itself the answer.
+  const kpis = showClosedKpis ? closedKpiHtml(shown, entry) : '';
+  const more = !!entry.nextToken;
+  const rangeLabel = CLOSED_RANGE_BY_KEY[closedRange]?.label || '';
+
+  if (summary) {
+    const totalTxt = entry.total != null ? ` of ${entry.total.toLocaleString('en-GB')}` : '';
+    summary.textContent =
+      `${shown.length.toLocaleString('en-GB')}${totalTxt} closed ticket${shown.length !== 1 ? 's' : ''}`
+      + ` · ${rangeLabel.toLowerCase()}`
+      + (breachedN ? ` · ${breachedN} breached an SLA` : '')
+      + (more ? ' · filters apply to what is loaded' : '');
+  }
+
+  if (!shown.length) {
+    const msg = closedTacTiers.size === 0
+      ? 'No TAC Tier selected. Check at least one tier above to see tickets.'
+      : closedAssignee
+        ? `No closed tickets for ${esc(closedAssignee)} in this range.`
+        : entry.issues.length
+          ? 'No closed tickets match the current filters.'
+          : `No tickets were closed in the selected range (${esc(rangeLabel.toLowerCase())}).`;
+    table.innerHTML = kpis + `<div class="empty">${msg}</div>` + closedPager(entry, shown.length);
+    return;
+  }
+  table.innerHTML = kpis
+                  + `<div class="scroll-x"><table class="tbl">${CLOSED_THEAD}`
+                  + `<tbody>${shown.map(closedRow).join('')}</tbody></table></div>`
+                  + closedPager(entry, shown.length);
+}
+
+// Forward-only pager. A Jira nextPageToken cannot be walked backwards or
+// jumped, so this loads cumulatively rather than offering numbered pages —
+// which suits a newest-first list anyway: page one is always the tickets
+// people actually came for.
+function closedPager(entry, shownCount) {
+  if (!entry.nextToken) {
+    // Nothing left to fetch; only worth saying so if a pager was ever in play.
+    return entry.issues.length > CLOSED_PAGE_SIZE
+      ? `<div class="cl-pager"><span class="cl-pager-note">All ${entry.issues.length.toLocaleString('en-GB')} loaded.</span></div>`
+      : '';
+  }
+  const remaining = entry.total != null ? Math.max(0, entry.total - entry.issues.length) : null;
+  const remTxt = remaining != null ? remaining.toLocaleString('en-GB') : 'the rest';
+  const busy = closedBusy ? ' disabled' : '';
+  const filterNote = shownCount !== entry.issues.length
+    ? ` · ${shownCount.toLocaleString('en-GB')} shown after filters`
+    : '';
+  return `<div class="cl-pager">
+    <button class="cl-btn"${busy} onclick="loadMoreClosed(false)">
+      ${ico('chevron-down', 12)}<span>${closedBusy ? 'Loading…' : 'Load more'}</span>
+    </button>
+    <button class="cl-btn"${busy} onclick="loadMoreClosed(true)">
+      <span>Load all remaining (${remTxt})</span>
+    </button>
+    <span class="cl-pager-note">${entry.issues.length.toLocaleString('en-GB')} loaded${entry.total != null ? ' of ' + entry.total.toLocaleString('en-GB') : ''}${filterNote}. The filters and the assignee list only see what is loaded.</span>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Ticket detail: history timeline ───────────────────────────────────────────
+// Click any row in any ticket table and get the ticket's history: every field
+// change with who made it and when, when it changed hands, and when each SLA
+// clock ran, stopped or was missed.
+//
+// This needs the Jira **changelog**, which no list query returns — not as a
+// field, not via any expand on /search/jql. It is a per-issue read, hence
+// /api/issue/:key (+ /changelog for the overflow past the inlined 100).
+//
+// Two things about the TAC workflow that shaped this:
+//
+//  - **"Owner" is not `assignee`.** There are three separate owner fields —
+//    `1.5 TAC Owner` (customfield_10859), `2.0` (…860) and `2.5` (…861) — and
+//    they are what the TAC escalation path actually moves between people.
+//    A timeline that only watched `assignee` would miss most hand-offs.
+//  - **Most history is written by automation.** On TAC-5400, 23 of 39 entries
+//    were made by "Automation for Jira" or "Atlassian Assist" rather than a
+//    person. Jira reports that as `author.accountType === 'app'`, so bot
+//    entries are marked rather than silently attributed to a human.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The three tier owner fields, in escalation order.
+const TAC_OWNER_FIELDS = {
+  customfield_10859: '1.5 TAC Owner',
+  customfield_10860: '2.0 TAC Owner',
+  customfield_10861: '2.5 TAC Owner',
+};
+
+// Shown by default in the timeline. Everything else in the changelog — and
+// there is a lot of it: Sentiment, Impact, Severity, Classification, Request
+// participants, attachments, Scheduled Date, form fields — is behind the
+// "Show all changes" tickbox. Keyed by the changelog item's `fieldId`, with a
+// fallback to its display `field` name for entries that carry no id.
+const SIGNIFICANT_FIELD_IDS = new Set([
+  'status', 'assignee', 'priority', 'resolution',
+  TAC_TIER_FIELD, ...Object.keys(TAC_OWNER_FIELDS),
+]);
+const SIGNIFICANT_FIELD_NAMES = new Set([
+  'status', 'assignee', 'priority', 'resolution', 'TAC Tier',
+  ...Object.values(TAC_OWNER_FIELDS),
+]);
+function isSignificantChange(item) {
+  if (item.fieldId && SIGNIFICANT_FIELD_IDS.has(item.fieldId)) return true;
+  return SIGNIFICANT_FIELD_NAMES.has(item.field);
+}
+// Owner and assignee changes are the "changed hands" events, coloured apart
+// from ordinary field edits.
+function isOwnershipChange(item) {
+  return item.fieldId === 'assignee' || !!TAC_OWNER_FIELDS[item.fieldId]
+      || item.field === 'assignee' || Object.values(TAC_OWNER_FIELDS).includes(item.field);
+}
+
+// ── State & cache ────────────────────────────────────────────────────────────
+let detailKey     = null;    // the open ticket, or null when the overlay is shut
+let detailData    = null;    // { fields, histories }
+let detailBusy    = false;
+let detailError   = '';
+let detailShowAll = false;   // the "Show all changes" tickbox
+
+// Per-ticket cache. A timeline is read repeatedly while working a queue —
+// open, close, open the next, come back — and the changelog is two round trips
+// for a busy ticket. Same shape of ceiling as the Closed list's cache: a short
+// TTL because a ticket being worked changes under you, and a hard cap because
+// a changelog plus six SLA payloads is not small.
+const DETAIL_TTL = 3 * 60 * 1000;
+const DETAIL_CACHE_MAX = 10;
+const detailCache = new Map();   // key -> { data, fetchedAt }
+
+function detailCacheGet(key) {
+  const e = detailCache.get(key);
+  if (!e) return null;
+  if (Date.now() - e.fetchedAt > DETAIL_TTL) { detailCache.delete(key); return null; }
+  detailCache.delete(key); detailCache.set(key, e);   // mark most-recently-used
+  return e.data;
+}
+function detailCacheSet(key, data) {
+  detailCache.delete(key);
+  detailCache.set(key, { data, fetchedAt: Date.now() });
+  while (detailCache.size > DETAIL_CACHE_MAX) detailCache.delete(detailCache.keys().next().value);
+}
+
+// ── Fetch ────────────────────────────────────────────────────────────────────
+// `expand=changelog` inlines at most 100 entries but reports the true count in
+// `changelog.total`, so a longer history needs the dedicated endpoint walked.
+// No ticket seen so far comes close (TAC-5400, the busiest, has 39), but a
+// silent truncation would be indistinguishable from "nothing else happened" —
+// which is the failure mode this whole file keeps running into.
+async function fetchIssueDetail(key) {
+  const issue = await apiFetch('/api/issue/' + encodeURIComponent(key));
+  const cl = issue.changelog || {};
+  let histories = Array.isArray(cl.histories) ? cl.histories.slice() : [];
+  const total = typeof cl.total === 'number' ? cl.total : histories.length;
+  while (histories.length < total) {
+    const page = await apiFetch(`/api/issue/${encodeURIComponent(key)}/changelog?startAt=${histories.length}`);
+    const values = Array.isArray(page.values) ? page.values : [];
+    if (!values.length) break;   // never spin if Jira stops handing rows back
+    histories = histories.concat(values);
+  }
+  return { fields: issue.fields || {}, histories };
+}
+
+async function openTicketDetail(key) {
+  detailKey = key;
+  detailError = '';
+  detailShowAll = false;
+  const hit = detailCacheGet(key);
+  if (hit) { detailData = hit; detailBusy = false; renderTicketDetail(); return; }
+  detailData = null; detailBusy = true;
+  renderTicketDetail();
+  try {
+    const data = await fetchIssueDetail(key);
+    detailCacheSet(key, data);
+    // Guard against a slow fetch landing after the user closed the overlay or
+    // opened a different ticket.
+    if (detailKey !== key) return;
+    detailData = data;
+  } catch (err) {
+    if (detailKey !== key) return;
+    detailError = mcpErrorMessage(err);
+  } finally {
+    if (detailKey === key) { detailBusy = false; renderTicketDetail(); }
+  }
+}
+
+function closeTicketDetail() {
+  detailKey = null; detailData = null; detailError = ''; detailBusy = false;
+  document.getElementById('td-scrim')?.remove();
+  document.body.style.overflow = '';
+}
+function onDetailShowAllChange(checked) { detailShowAll = checked; renderTicketDetail(); }
+
+// One document-level listener rather than an onclick per row, so every ticket
+// table — present and future — gets this for free from just a `data-ticket`
+// attribute. Clicks on an <a> or <button> inside the row are left alone: that
+// is what keeps the key's Jira link and the linked-tickets toggle working.
+function onTicketRowClick(e) {
+  if (e.target.closest('a, button, input, label, select')) return;
+  const row = e.target.closest('[data-ticket]');
+  if (!row) return;
+  openTicketDetail(row.getAttribute('data-ticket'));
+}
+function onDetailKeydown(e) {
+  if (e.key === 'Escape' && detailKey) closeTicketDetail();
+}
+
+// ── Timeline construction ────────────────────────────────────────────────────
+// Merges three sources into one list, newest first:
+//   1. the ticket being created,
+//   2. each changelog entry (one per author+timestamp, carrying its items),
+//   3. the moment each SLA cycle was breached.
+//
+// SLA *starts* and *stops* deliberately do NOT become timeline events: every
+// clock starts within a second of the ticket being created, so six near-
+// identical "started" entries would bury the changes worth reading. The full
+// cycle detail lives in its own section instead (slaCycleRows), which is the
+// better answer to "which clocks ran and when" anyway. Breaches DO belong in
+// the timeline — seeing a miss land between two status changes is the point.
+function slaCycles(issue) {
+  const out = [];
+  for (const field of SLA_ALL) {
+    const sla = issue.fields?.[field];
+    if (!sla) continue;
+    const name = sla.name || SLA_FIELD_NAMES[field] || field;
+    (sla.completedCycles || []).forEach(c => out.push({ field, name, cycle: c, ongoing: false }));
+    if (sla.ongoingCycle) out.push({ field, name, cycle: sla.ongoingCycle, ongoing: true });
+  }
+  return out;
+}
+
+function buildTicketTimeline(data, showAll) {
+  const events = [];
+  const created = data.fields?.created;
+  if (created) {
+    events.push({
+      at: new Date(created).getTime(),
+      kind: 'created',
+      who: data.fields?.reporter?.displayName || null,
+      bot: false,
+    });
+  }
+  for (const h of data.histories || []) {
+    const items = (h.items || []).filter(it => showAll || isSignificantChange(it));
+    // A history entry whose every item was filtered out contributes nothing —
+    // dropping it here is what stops the default view showing empty rows.
+    if (!items.length) continue;
+    events.push({
+      at: new Date(h.created).getTime(),
+      kind: 'change',
+      who: h.author?.displayName || 'Unknown',
+      bot: h.author?.accountType === 'app',
+      items,
+      ownership: items.some(isOwnershipChange),
+    });
+  }
+  for (const c of slaCycles(data)) {
+    // Only a breach that has actually happened: an ongoing cycle carries a
+    // breachTime in the FUTURE (the deadline), which is not an event.
+    const bt = c.cycle.breachTime?.epochMillis;
+    if (!c.cycle.breached || bt == null || bt > Date.now()) continue;
+    events.push({ at: bt, kind: 'breach', slaName: c.name, ongoing: c.ongoing });
+  }
+  // Newest first, matching Jira's own history order and the rest of this
+  // dashboard. Ties broken so a breach reads after the change that caused it.
+  const rank = { breach: 0, change: 1, created: 2 };
+  events.sort((a, b) => b.at - a.at || (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9));
+  return events;
+}
+
+// ── Time in status ───────────────────────────────────────────────────────────
+// Derived from the status transitions in the changelog. The first status is
+// read off the earliest transition's `fromString` — Jira does not record the
+// opening status as a change, so it is only recoverable that way.
+//
+// The window ends at the last recorded activity for a finished ticket, and at
+// "now" for a live one. Using the resolution date instead would silently drop
+// anything that happened after it, which is exactly the case for the seven
+// tickets that were resolved and then reopened (see section 2 of CLAUDE.md).
+function timeInStatus(data) {
+  const createdAt = data.fields?.created ? new Date(data.fields.created).getTime() : null;
+  if (!createdAt) return null;
+  const changes = [];
+  for (const h of data.histories || []) {
+    for (const it of h.items || []) {
+      if (it.field === 'status' || it.fieldId === 'status') {
+        changes.push({ at: new Date(h.created).getTime(), from: it.fromString, to: it.toString });
+      }
+    }
+  }
+  changes.sort((a, b) => a.at - b.at);
+  const isDone = data.fields?.status?.statusCategory?.key === 'done';
+  const lastActivity = (data.histories || []).reduce(
+    (m, h) => Math.max(m, new Date(h.created).getTime()), createdAt);
+  const endAt = isDone ? Math.max(lastActivity, createdAt) : Date.now();
+
+  const periods = [];
+  let cursor = createdAt;
+  let current = changes.length ? changes[0].from : (data.fields?.status?.name || '—');
+  for (const c of changes) {
+    if (c.at > cursor) periods.push({ status: current, ms: c.at - cursor });
+    cursor = c.at; current = c.to;
+  }
+  if (endAt > cursor) periods.push({ status: current, ms: endAt - cursor });
+
+  // Collapse repeat visits to the same status into one total — "9d across 3
+  // visits" is the useful figure, not three separate slivers.
+  const totals = new Map();
+  for (const p of periods) {
+    const e = totals.get(p.status) || { status: p.status, ms: 0, visits: 0 };
+    e.ms += p.ms; e.visits++;
+    totals.set(p.status, e);
+  }
+  const rows = [...totals.values()].sort((a, b) => b.ms - a.ms);
+  const total = rows.reduce((s, r) => s + r.ms, 0);
+  return { rows, total, isDone, endAt };
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function detailOwnerName(issue, field) { return issue.fields?.[field]?.displayName || null; }
+
+// A changelog value is `toString`/`fromString` — already the human-readable
+// form Jira rendered at the time, so an option renamed since still reads as
+// whatever it was called then. Empty means "was not set".
+function changeValue(v) {
+  return v == null || v === ''
+    ? `<span class="td-ch-v is-none">none</span>`
+    : `<span class="td-ch-v">${esc(v)}</span>`;
+}
+function changeLine(item) {
+  const label = TAC_OWNER_FIELDS[item.fieldId] || item.field || item.fieldId || 'field';
+  return `<div class="td-ch">`
+       + `<span class="td-ch-f">${esc(label)}</span>`
+       + changeValue(item.fromString)
+       + `<span class="td-ch-arrow">${ico('chevron-right', 10)}</span>`
+       + changeValue(item.toString)
+       + `</div>`;
+}
+
+function detailEventHtml(ev, prev) {
+  // `prev` is the next-OLDER event, so this reads "N after the previous
+  // change" — the thing that makes a three-week silence visible.
+  const gap = prev && ev.at > prev.at ? ev.at - prev.at : null;
+  const when = `<div class="td-ev-when">${esc(fmtShortDateTime(new Date(ev.at).toISOString()))}`
+             + (gap && gap >= 3600000 ? ` · ${esc(formatDuration(gap))} after previous` : '')
+             + `</div>`;
+  if (ev.kind === 'created') {
+    return `<div class="td-ev is-created"><div class="td-ev-dot"></div>${when}`
+         + `<div class="td-ev-who">${ico('circle-check', 12)}Ticket created`
+         + (ev.who ? ` <span style="font-weight:500;color:var(--fg-3)">by ${esc(ev.who)}</span>` : '')
+         + `</div></div>`;
+  }
+  if (ev.kind === 'breach') {
+    return `<div class="td-ev is-breach"><div class="td-ev-dot"></div>${when}`
+         + `<div class="td-ev-who" style="color:var(--aa-red)">${ico('circle-exclamation', 12)}`
+         + `${esc(ev.slaName)} breached</div>`
+         + `<div class="td-sla-line"><span class="td-sla-meta">`
+         + (ev.ongoing ? 'Clock was still running at this point' : 'Target missed while the clock ran')
+         + `</span></div></div>`;
+  }
+  const cls = ev.ownership ? ' is-owner' : '';
+  return `<div class="td-ev${cls}"><div class="td-ev-dot"></div>${when}`
+       + `<div class="td-ev-who">${ico('user', 12)}${esc(ev.who)}`
+       + (ev.bot ? `<span class="td-ev-bot">auto</span>` : '')
+       + `</div>`
+       + ev.items.map(changeLine).join('')
+       + `</div>`;
+}
+
+// One row per SLA cycle: when it ran, what it was aiming at, what it took.
+// This is the direct answer to "which SLAs were ticking and when" — including
+// the clocks that never breached, which the timeline never mentions.
+function slaCycleRows(issue) {
+  const cycles = slaCycles(issue);
+  if (!cycles.length) return `<div class="empty-inline">No SLA data on this ticket</div>`;
+  cycles.sort((a, b) => (a.cycle.startTime?.epochMillis || 0) - (b.cycle.startTime?.epochMillis || 0));
+  const rows = cycles.map(c => {
+    const cy = c.cycle;
+    const started = cy.startTime?.epochMillis;
+    const stopped = cy.stopTime?.epochMillis;
+    const goal = cy.goalDuration?.millis;
+    const elapsed = cy.elapsedTime?.millis;
+    // An ongoing cycle's breachTime is a deadline, not a past event.
+    const breachedNow = !!cy.breached;
+    const outcome = c.ongoing
+      ? (breachedNow
+          ? badge('Breached', 'var(--red-20)', 'var(--aa-red)', 'circle-exclamation', true)
+          : cy.paused
+            ? badge('Paused', 'var(--grey-100)', 'var(--grey-600)', 'circle-minus', true)
+            : badge('Running', 'var(--primary-30)', 'var(--aa-primary)', 'clock', true))
+      : (breachedNow
+          ? badge('Breached', 'var(--red-20)', 'var(--aa-red)', 'circle-exclamation', true)
+          : badge('Met', 'var(--green-30)', 'var(--aa-green)', 'circle-check', true));
+    return `<tr>
+      <td class="t-sm">${esc(c.name)}</td>
+      <td class="t-sm">${started != null ? esc(fmtShortDateTime(new Date(started).toISOString())) : '—'}</td>
+      <td class="t-sm">${c.ongoing
+          ? `<span style="color:var(--fg-4)">still open</span>`
+          : (stopped != null ? esc(fmtShortDateTime(new Date(stopped).toISOString())) : '—')}</td>
+      <td class="t-sm">${goal != null ? esc(formatDuration(goal)) : '—'}</td>
+      <td class="t-sm">${elapsed != null ? esc(formatDuration(elapsed)) : '—'}</td>
+      <td>${outcome}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="scroll-x"><table class="tbl">
+    <thead><tr><th>SLA</th><th>Started</th><th>Stopped</th><th>Goal</th><th>Elapsed</th><th>Outcome</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+function timeInStatusHtml(tis) {
+  if (!tis || !tis.rows.length || !tis.total) return '';
+  const segs = tis.rows.map(r =>
+    `<div class="td-tis-seg" style="width:${(r.ms / tis.total * 100).toFixed(2)}%;background:${sCol(r.status)}" `
+  + `title="${esc(r.status)} — ${esc(formatDuration(r.ms))}"></div>`).join('');
+  const legend = tis.rows.map(r =>
+    `<span class="td-tis-item"><span class="td-tis-dot" style="background:${sCol(r.status)}"></span>`
+  + `${esc(r.status)} <b>${esc(formatDuration(r.ms))}</b>`
+  + (r.visits > 1 ? ` <span style="color:var(--fg-4)">×${r.visits}</span>` : '')
+  + `</span>`).join('');
+  return `<div class="td-tis">
+    <div class="td-section-h">Time in status
+      <span style="font-weight:500;color:var(--fg-4)">
+        ${esc(formatDuration(tis.total))} total, creation to ${tis.isDone ? 'last activity' : 'now'}
+      </span>
+    </div>
+    <div class="td-tis-bar">${segs}</div>
+    <div class="td-tis-legend">${legend}</div>
+  </div>`;
+}
+
+function detailFactsHtml(issue) {
+  const f = issue.fields || {};
+  const owners = Object.entries(TAC_OWNER_FIELDS)
+    .map(([field, label]) => ({ label, name: detailOwnerName(issue, field) }))
+    .filter(o => o.name);
+  const facts = [
+    ['Assignee', f.assignee?.displayName || 'Unassigned'],
+    ['Reporter', f.reporter?.displayName || '—'],
+    ...owners.map(o => [o.label, o.name]),
+    ['TAC Tier', f[TAC_TIER_FIELD]?.value || '—'],
+    ['Organisation', (f.customfield_10002 || [])[0]?.name || '—'],
+    ['Product', f.customfield_10854?.value || '—'],
+    ['Created', fmtShortDateTime(f.created)],
+    ['Last updated', fmtShortDateTime(f.updated)],
+  ];
+  if (f.resolutiondate) facts.push(['Closed', fmtShortDateTime(f.resolutiondate)]);
+  if (f.resolution?.name) facts.push(['Resolution', f.resolution.name]);
+  return `<div class="td-facts">` + facts.map(([k, v]) =>
+    `<div><div class="td-fact-k">${esc(k)}</div><div class="td-fact-v">${esc(v)}</div></div>`).join('')
+  + `</div>`;
+}
+
+function renderTicketDetail() {
+  if (!detailKey) { closeTicketDetail(); return; }
+  let scrim = document.getElementById('td-scrim');
+  if (!scrim) {
+    scrim = document.createElement('div');
+    scrim.id = 'td-scrim';
+    scrim.className = 'td-scrim';
+    // Only a click on the scrim itself closes — a click that started inside
+    // the modal and happens to bubble here must not.
+    scrim.addEventListener('click', e => { if (e.target === scrim) closeTicketDetail(); });
+    document.body.appendChild(scrim);
+    document.body.style.overflow = 'hidden';
+  }
+
+  const key = detailKey;
+  const head = `<div class="td-head">
+      <div class="td-head-main">
+        <a class="td-key" href="${JIRA_BASE}/${esc(key)}" target="_blank" rel="noopener">
+          ${esc(key)}${ico('link', 11)}
+        </a>
+        <div class="td-title" id="td-title">${detailData ? esc(detailData.fields?.summary || '—') : 'Loading…'}</div>
+        <div class="td-badges" id="td-badges"></div>
+      </div>
+      <button class="icon-btn" title="Close (Esc)" onclick="closeTicketDetail()">${ico('xmark', 15)}</button>
+    </div>`;
+
+  if (detailBusy || (!detailData && !detailError)) {
+    scrim.innerHTML = `<div class="td-modal" role="dialog" aria-modal="true" aria-label="Ticket ${esc(key)}">
+      ${head}
+      <div class="td-body"><div class="loading-state"><div class="spinner"></div><span>Loading ${esc(key)} history…</span></div></div>
+    </div>`;
+    return;
+  }
+  if (detailError) {
+    scrim.innerHTML = `<div class="td-modal" role="dialog" aria-modal="true" aria-label="Ticket ${esc(key)}">
+      ${head}<div class="td-body">${errorHtml(detailError)}</div></div>`;
+    return;
+  }
+
+  const issue = detailData;
+  const f = issue.fields || {};
+  const s = f.status?.name || '—', p = f.priority?.name || '—', pc = priColor(p);
+  const events = buildTicketTimeline(issue, detailShowAll);
+  const tis = timeInStatus(issue);
+  // What the tickbox would reveal, so it says what it does rather than making
+  // you toggle it to find out. Counted in CHANGES, not events: switching it on
+  // both adds whole events and adds lines to events already on screen, and
+  // counting events alone undercounts it badly (TAC-6225: 1 event, 5 changes).
+  const countChanges = list => list.reduce((n, e) => n + (e.items ? e.items.length : 0), 0);
+  const hiddenCount = Math.max(0, countChanges(buildTicketTimeline(issue, true)) - countChanges(events));
+
+  scrim.innerHTML = `<div class="td-modal" role="dialog" aria-modal="true" aria-label="Ticket ${esc(key)}">
+    ${head}
+    <div class="td-body">
+      ${detailFactsHtml(issue)}
+      ${timeInStatusHtml(tis)}
+      <div class="td-section-h">SLA clocks</div>
+      ${slaCycleRows(issue)}
+      <div class="td-section-h" style="margin-top:var(--space-5)">History
+        <span style="font-weight:500;color:var(--fg-4)">${events.length} event${events.length !== 1 ? 's' : ''}</span>
+        <label class="pc-checkbox">
+          <input type="checkbox" ${detailShowAll ? 'checked' : ''} onchange="onDetailShowAllChange(this.checked)">
+          <span>Show all changes${hiddenCount && !detailShowAll ? ` (+${hiddenCount} more)` : ''}</span>
+        </label>
+      </div>
+      ${events.length
+        ? `<div class="td-tl">${events.map((ev, i) => detailEventHtml(ev, events[i + 1])).join('')}</div>`
+        : `<div class="empty-inline">No history recorded</div>`}
+    </div>
+  </div>`;
+
+  const badges = document.getElementById('td-badges');
+  if (badges) {
+    badges.innerHTML = badge(s, sBg(s), sFg(s), null, true)
+                     + badge(p, pc.bg, pc.fg)
+                     + (f[TAC_TIER_FIELD]?.value ? badge('Tier ' + f[TAC_TIER_FIELD].value, 'var(--grey-100)', 'var(--fg-2)') : '');
+  }
 }
 
 function renderDrill(title,tickets) {
@@ -2409,6 +3771,9 @@ function stopAutoRefresh() {
 
 paintChrome();
 document.addEventListener('click', closeTacTierPanelOnOutsideClick);
+document.addEventListener('click', closeClosedPanelsOnOutsideClick);
+document.addEventListener('click', onTicketRowClick);
+document.addEventListener('keydown', onDetailKeydown);
 // Identity resolves BEFORE the first fetch, because JIRA_BASE (every ticket's
 // browse link) comes out of the same /api/me call. One extra round-trip up
 // front, against a loadLive() that already makes several paginated calls —
