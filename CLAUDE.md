@@ -11,36 +11,83 @@ code is the way it is** and **the facts that were expensive to establish**.
 
 ## 1. What this is
 
-A read-only dashboard over the Access4 UK TAC service desk queue. It began as a
+A read-only dashboard over the Access4 TAC service desk queues. It began as a
 Claude Cowork artifact, was ported to the Claude Artifacts platform, and was
 then rebuilt as this standalone site so people without Claude accounts could
 use it.
 
-Five views. Four are fed by a **single** Jira fetch of open tickets; the
-Closed list is the exception and runs its own query (section 5).
+**Two desks, one at a time.** The picker in the top-left switches between the
+UK queue (Jira project `TAC`) and the ANZ queue (`TAPC`) — added 8 Sep 2026,
+see "The desk switcher" in section 8. Everything below applies to whichever
+desk is selected; where the two differ, it says so.
+
+Six views. The Live queue, Priority list and Wallboard all read one shared
+fetch of open tickets; **Closed, Historical and Vendor Bugs each run their own
+query** (sections 5, 6 and the Historical notes).
 
 | View | What it shows |
 |---|---|
 | Live queue | Summary tiles, status/priority/type charts, assignee load, drill-downs |
 | Priority list | All open tickets in an 11-tier triage order (section 4) |
 | Closed | Closed/resolved tickets in a chosen date window, newest close first (section 5) |
+| Vendor Bugs | Tickets the vendor has taken on, split into Version Tagged and Awaiting Dev (section 6) |
 | Historical | Week-by-week created/resolved, SLA attainment, CSAT |
 | Wallboard | Full-screen KPI view for a TV |
 
 Clicking any ticket row in any of those lists opens a **history timeline**
-for that ticket (section 6) — a modal, not a tab.
+for that ticket (section 7) — a modal, not a tab.
 
 Plus **Personal mode**, which filters every view to the signed-in user.
+
+The wallboard is the one view with no picker — the header is hidden there — so
+a TV is switched by choosing the desk before going full-screen. Its title
+names the desk it is showing.
 
 ## 2. Verified Jira facts
 
 All confirmed against the live instance on 28 Aug 2026. Don't re-derive these.
 
-**Site & project**
+**Site & projects**
 
 - Cloud ID `5e94f2c7-6692-40a8-af5e-59a01701861e`, site `access4.atlassian.net`
 - Project `TAC` = "Service Desk – UK TAC", id `10250`
-- Company-managed (classic) Jira **Service Management** project
+- Project `TAPC` = "Service Desk – ANZ TAC", id `10296`
+- Both company-managed (classic) Jira **Service Management** projects, both in
+  the "Access4 Service Management" category
+
+**The ANZ desk's key is `TAPC`, not `ANZTAC` or `TACANZ`** — established
+8 Sep 2026 from `project/search`, and worth writing down because it is not
+guessable from the project name. Note it is one letter away from the `TACPC`
+near-miss the key guard has always been tested against, and `TAC` is *not* a
+prefix of it, so no guard needed loosening to admit it.
+
+**The two desks are shaped identically** (measured 8 Sep 2026 over the first
+100 open ANZ tickets after `TP_FILTER`). This is why the switcher is only a
+project key and not a per-desk configuration:
+
+| | UK `TAC` | ANZ `TAPC` |
+|---|---|---|
+| Open after `TP_FILTER` | 42 | **395** |
+| Statuses seen | the section's table | same names, no new ones |
+| Priorities | same 5 IDs | same 5 IDs |
+| TAC Tier values | 1.5 / 2.0 / 2.5 | same three, no nulls |
+| All six SLA custom fields | present | present |
+| Issue types | as UK | Incident / Question / Task |
+
+Three consequences worth knowing:
+
+- **ANZ is ~10x the UK queue**, so its live pull is several pages where the UK
+  desk is usually one. Pagination and the paging trap in section 8 stop being
+  theoretical on that desk.
+- `Scheduled With Partner` **actually has tickets there** (8 of the first 100),
+  where the UK desk has only ever shown it transiently. The parity work in
+  section 4 is load-bearing on ANZ.
+- **ANZ has a live P1**, so priority tier 1 — the one row that could never be
+  exercised against real UK data (section 9) — now renders in practice.
+- `Response Target` (`customfield_10906`) is sparse on ANZ: present on 3 of
+  the first 100 open tickets. The Closed tab's per-SLA denominators already
+  handle "no cycle for this SLA", but expect its tile to read over a much
+  smaller base there.
 
 **Priorities** — reference by ID, names contain a pipe and are easy to mistype:
 
@@ -111,6 +158,28 @@ escalation path actually moves between people, and a hand-off usually shows
 up as a change to one of them rather than to `assignee`. Only the timeline
 reads them; the list queries do not fetch them.
 
+**The four vendor fields** (confirmed 9 Sep 2026 from TAC's create-meta for
+issue type Incident, and against 27 live tickets). These power the Vendor Bugs
+tab in section 6:
+
+| Field | Name | Type |
+|---|---|---|
+| `customfield_10908` | Third Party Status | single-select, 5 options |
+| `customfield_10866` | Third Party Dev Reference | free text (`OMP-5945`) |
+| `customfield_10867` | Tagged Version | free text (`v44.5`, `44.1.4`) |
+| `customfield_10868` | Third Party Ticket URL | free text, **not** a URL field |
+
+`Third Party Status`'s five options are `Waiting for Third Party` (12023),
+`Allocated to Dev` (12024), `Version Tagged` (12025), `Fix Deployed` (12026)
+and `Duplicate` (12027) — the last four are exactly what `TP_FILTER` excludes.
+Watch out for a **second, unrelated field also called "Third Party Status"**
+(`[HUBSPOT MIGRATED] Third Party Status`): the JQL literal
+`"Third Party Status[Dropdown]"` is what disambiguates them, which is why
+every query in this app spells it that way.
+
+There is **no "Last Update Date" custom field** — that column on the Vendor
+Bugs tab is Jira's own `updated`.
+
 **Other custom fields:** `customfield_10002` organisation,
 `customfield_10854` product, `customfield_10690` CSAT,
 `customfield_10700` / `customfield_10690` used in historical,
@@ -156,7 +225,7 @@ with a third party in a state the TAC team can't act on:
  OR "Third Party Status[Dropdown]" is EMPTY)
 ```
 
-## 3. Five traps — each fails silently
+## 3. Seven traps — each fails silently
 
 **1. Never write `"Resolution"` for the SLA field.** It collides with Jira's
 built-in `resolution` field and the clause matches nothing. `"Resolution" =
@@ -202,6 +271,51 @@ clicked with a panel open. Both handlers now call
 `collapseMultiSelectPanels(root)`, which removes the panel and un-presses its
 button and touches nothing else. **If you add a control to either controls
 row, do not reintroduce a full re-render on panel close.**
+
+**6. Never `await` straight into a global that a later render reads.** Written
+the obvious way —
+
+```js
+RAW_ISSUES = await jiraSearch(jql, LIVE_FIELDS);
+if (projectStale(epoch)) return;      // too late: the write already happened
+```
+
+— the assignment lands the moment the fetch resolves, *before* any staleness
+check can run. Switch desk 200ms into a slow fetch and the old desk's tickets
+sit in `RAW_ISSUES` under the new desk's header; the screen still looks right
+because `ALL_ISSUES` was rebuilt by the newer load, and the wrong data only
+surfaces at the *next* `recomputeViews()` — a personal-mode toggle, or the
+5-minute auto-refresh. Found in a browser on 8 Sep 2026 by doing exactly that.
+Every loader now awaits into a local, checks, and only then assigns. Any new
+fetch must do the same.
+
+**7. A RegExp built inside a template literal needs `\\s`, not `\s`.** In a
+template literal `\s` is just `s`, so
+
+```js
+new RegExp(`project\s*=\s*${KEY}\b`, 'i')   // compiles to /projects*=s*TACb/
+```
+
+matches nothing, ever. That was the live state of `/api/count`'s project pin:
+the route 403'd every call, which the Closed list reports only as a missing
+"of N" label on the pager, so it read as "Jira has no total for this" rather
+than a bug. Found 8 Sep 2026 while making the pin multi-project; the guard is
+now one shared `jqlProjectAllowed()` so there is no second copy to get wrong.
+This is also the answer to the "untested: check `POST /api/count` first" note
+that stood in section 9 for days — it was broken all along.
+
+**A 403 saying "your Jira account does not have permission" may be this app's
+own project pin.** `mcpErrorMessage()` used to map every 403 to that sentence,
+so a query for a project the *running server* was never told to allow read as
+a Jira permissions problem — which is precisely what happened on 8 Sep 2026,
+minutes after the desk switcher shipped: the server process had been up since
+7 Sep, so it still carried the single-key pin and refused every `project =
+TAPC` query while the browser (which re-reads the page from disk) happily
+asked for them. Same lesson as trap 4, different status code. `httpError()`
+now reads the body's `error` field and reports `project_not_allowed` /
+`issue_not_allowed` as configuration faults naming `JIRA_PROJECT_KEYS` and
+telling you to restart the server; a genuine Jira 403 still reads as a
+permissions problem.
 
 Also note: when querying through an MCP connector, **invalid JQL returns zero
 rows instead of an error**. A 0 result is not evidence your syntax is right.
@@ -404,20 +518,37 @@ repeat itself on `:hover` or `.tbl tbody tr:hover td` wins and flips the row
 grey under the pointer).
 
 **Which SLAs count is a user choice, and it changes the answer a lot.** An
-"SLA" multi-select lists all six clocks, all checked by default. On the 47
-tickets closed in the 14 days to 4 Sep 2026: all six → **26** breached, the
-three headline SLAs (First Response / Restoration / Resolution) → **19**. So
-the default view paints over half the list red, and the Historical tab's
-"SLA met %" — which only ever counts those three — will legitimately disagree
-with it. That is the chosen behaviour, not a bug. Deselecting SLAs scopes the
-breach test only; it never drops rows, because a ticket that missed nothing you
-selected still belongs in a list of what closed.
+"SLA" multi-select lists the clocks in `CLOSED_SLA_OPTIONS`; the ones ticked on
+load are `CLOSED_SLA_DEFAULT`. On the 47 tickets closed in the 14 days to
+4 Sep 2026: all six → **26** breached, the three headline SLAs (First Response
+/ Restoration / Resolution) → **19**. So a wide selection paints over half the
+list red, and the Historical tab's "SLA met %" — which only ever counts those
+three — will legitimately disagree with it. That is the chosen behaviour, not a
+bug. Deselecting SLAs scopes the breach test only; it never drops rows, because
+a ticket that missed nothing you selected still belongs in a list of what
+closed.
+
+**Two of the six are narrowed on this tab only** (8 Sep 2026, at the
+business's direction). `SLA_ALL` still holds all six for the live queue's
+`resolveSla()` and the ticket timeline — dropping a clock there would hide real
+breaches — so both narrowings live in the two Closed-tab lists instead:
+
+- **`Time with Agent` (`customfield_10970`) is not offered at all.** It is also
+  dropped from `CLOSED_FIELDS`, since nothing on the tab can read a clock that
+  cannot be picked; that request is now **12** fields, not 13.
+- **`Restoration` (`customfield_10968`) is offered but starts unticked.** It
+  stays in `CLOSED_FIELDS` — ticking it has to work without a re-query.
+
+So a fresh load counts four clocks, and the button reads "SLA: 4 of 5". Neither
+default is persisted, matching the tab's other toggles. Both counts in the
+label come from `CLOSED_SLA_OPTIONS.length` rather than being written out, so
+adding or removing an option can't leave the label claiming the wrong number.
 
 **Paging is forward-only and cumulative.** A Jira `nextPageToken` cannot be
 walked backwards or jumped, so there are no numbered pages — "Load more" plus
 "Load all remaining". `fetchClosedPage()` walks tokens until it has **at least**
 `CLOSED_PAGE_SIZE` (100) rows, because a single Jira call returns far fewer when
-13 fields are requested. "At least": the total is tested *after* each append and
+a dozen fields are requested. "At least": the total is tested *after* each append and
 a Jira page can't be resumed halfway, so a pager page overshoots by up to one
 Jira page. That is why the button says "Load more" rather than naming a number.
 
@@ -471,7 +602,9 @@ silently counting them as successes would flatter the number.
 Expect it to be **lower than every component tile** — requiring a ticket to
 meet all selected SLAs is strictly harder than meeting any one of them, so it
 sits at or below the lowest of them. On that sample: 21 of 47 = **45%** with
-all six selected, against components of 72–85%. Dropping SLAs from the picker
+all six selected, against components of 72–85% — note that a fresh load no
+longer selects all six (see the two narrowings above), so the default figure is
+higher than that 45%. Dropping SLAs from the picker
 can only raise it (fewer ways to fail): the four named tiles alone give 47%,
 and a single selected SLA makes it equal that SLA's own tile. Nothing selected
 shows an em dash, never a bogus 100% — `closedSlaState()` finds no breaches
@@ -534,7 +667,93 @@ ticket that is already closed.
 `search/approximate-count` and is treated as non-fatal — on failure the pager
 says "the rest" instead of a number and everything else still works.
 
-## 6. The ticket timeline
+## 6. Vendor Bugs
+
+Added 9 Sep 2026. Tickets the upstream vendor has actually taken on: **Third
+Party Status set to anything other than "Waiting for Third Party"**. Two
+sections, `Version Tagged` on top and `Awaiting Dev` below, both oldest-touched
+first — the list answers "what has been waiting longest".
+
+**Every ticket on this tab is invisible everywhere else in the dashboard.**
+`TP_FILTER`, which every other list applies, excludes precisely the four Third
+Party Status values this tab selects for, so none of these tickets are in
+`RAW_ISSUES`. That is the reason the tab exists and the reason it runs its own
+query — the same situation as the Closed list arriving at from the opposite
+direction. (The other known blind spot is the seven reopened tickets in
+section 2, which are still in no view at all.)
+
+**The filter is written as "set, and not the parked value"**, not as
+`in (Allocated to Dev, Version Tagged, Fix Deployed, Duplicate)`. The two are
+identical against today's five options, but a sixth option added in Jira later
+would silently never reach this tab under the `in` form. Same instinct as the
+TAC Tier filter treating an unknown value as visible rather than dropped, and
+`vendorStatusBadge()` matches: an unrecognised value renders in the grey
+fallback rather than vanishing.
+
+```
+project = <desk> AND "Third Party Status[Dropdown]" is not EMPTY
+  AND "Third Party Status[Dropdown]" != "Waiting for Third Party"
+  ORDER BY updated ASC
+```
+
+**No resolution or statusCategory clause**, because the rule as specified is
+"any ticket". On 9 Sep 2026 all 27 UK matches were open (the query returns the
+same 27 with and without `statusCategory != Done`), so it costs nothing today —
+but if closed vendor bugs ever accumulate here, `AND statusCategory != Done`
+in `vendorJql()` is the one line to add.
+
+**The ANZ desk has none — and not because the filter is wrong.** `TAPC` has
+**zero** tickets with a Third Party Status of *any* value, so the tab is
+legitimately empty there. The empty state says which desk it is talking about
+and what the list needs, precisely so it does not read as a broken query.
+
+**The section split is on the Tagged Version FIELD, not on the Third Party
+Status of the same name**, and the two disagree on real tickets: two UK tickets
+carry status `Version Tagged` with the version field empty, so they sit under
+"Awaiting Dev". That is what was asked for; the Vendor Status column is right
+there for anyone who wants to spot the mismatch.
+
+**Tagged Version is free text and is not written consistently.** The live set
+is `44.1.4`, `v44.5`, `v45`, `v45.1`. A plain string sort splits that into two
+groups, because a digit sorts before a letter — `44.1.4` would land nowhere
+near `v44.5` despite being the earlier release. `compareVendorVersion()`
+therefore drops a leading `v` and compares segment by segment, numerically
+where both segments are numeric (so `v9` precedes `v10`, which a lexical sort
+gets backwards). Ascending: oldest tagged release first, matching the
+oldest-first intent of everything else on the tab. Ties fall through to
+`updated` ascending.
+
+**A ticket with no `updated` sorts last**, not first — in an oldest-first list
+a missing date would otherwise jump to the top of the queue.
+
+**The Dev Ticket URL column is an icon, never the address.** They are long
+vendor help-desk URLs (`help.netsapiens.com/hc/en-us/requests/…`) that would
+dominate the row. The icon carries "Dev Ticket URL" as both `title` and
+`aria-label`.
+
+**That field is free text, so only `http(s)` is ever linked.** `vendorUrlCell()`
+tests the value against `/^https?:\/\//i` and renders anything else as muted
+text. Nothing stops someone typing `javascript:…` into a Jira text field, and
+this is the one place in the app that turns a user-supplied string into an
+`href`. The ticket key is escaped into its `href` too — Jira only issues
+`TAC-1234`-shaped keys, so that one is belt-and-braces.
+
+**Cache:** one array with a 2-minute TTL (`VENDOR_TTL`), the same figure the
+Closed list uses for ranges that include today, plus a `Refresh` button that
+forces a re-query. No keyed cache and no pager: it is a single query with
+nothing to vary it, and 27 rows arrive in one page. Nothing is persisted, and a
+desk switch clears it like every other cache.
+
+**Personal mode applies**, as it does to every view, and the empty state says
+"assigned to you" when it is the reason nothing shows. There is deliberately no
+assignee picker: it was not asked for, and at this size the whole list fits on
+one screen.
+
+**Rows open the ticket timeline** through the same delegated listener as
+everywhere else (`data-ticket`), and clicks on the two links inside a row — the
+Jira key and the Dev Ticket URL icon — are ignored by it, as intended.
+
+## 7. The ticket timeline
 
 Added 4 Sep 2026. Clicking a ticket row anywhere opens a modal with that
 ticket's history: the current facts, time spent in each status, every SLA cycle,
@@ -604,7 +823,7 @@ ticket. Same reasoning as the Closed list's cache, and likewise not persisted.
 their bodies are ADF rich text that would have to be flattened to plain text.
 The ticket key links to Jira, where they live.
 
-## 7. Decisions and rationale
+## 8. Decisions and rationale
 
 **OAuth per viewer, not a service account.** Each user signs in with their own
 Atlassian account and queries run as them, so Jira's permission scheme is the
@@ -645,7 +864,64 @@ that you have reached the end.
 quietly displaying one person's numbers as the team's would be actively
 misleading.
 
-## 8. Tested vs untested
+### The desk switcher (added 8 Sep 2026)
+
+The brand name in the header is a `<select>` over `PROJECTS`, and its key goes
+straight into every JQL the page builds (`loadLive`, `loadHistorical`, the
+wallboard's today queries, `closedJql()`). Adding a third desk is one entry in
+`PROJECTS` plus its key in the server's `JIRA_PROJECT_KEYS` — no markup, no
+per-view change.
+
+**A native `<select>`, not the custom panel pattern.** Two desks are mutually
+exclusive, so there is nothing to multi-select, and a native control gets
+keyboard and screen-reader behaviour for free — plus it cannot fall into
+trap 5, since there is no document-level click listener and nothing gets
+re-rendered on close. It is styled to *look* like the brand name rather than a
+form field (`appearance:none` plus our own overlaid `chevron-down`, the same
+trick documented for the Assignee picker in section 4).
+
+**One desk at a time; no combined view.** Asked and declined 8 Sep 2026: a
+mixed queue would interleave two teams' triage order in the Priority list and
+present two teams' assignee load as one, which is misleading rather than
+informative. If it is ever wanted, the JQL is `project in (TAC, TAPC)` — but
+note the server pin matches `project = <key>` and would need widening too.
+
+**The choice is NOT persisted.** Every fresh load opens the UK desk. Asked and
+chosen 8 Sep 2026: a wallboard TV and a shared link then always start from the
+same place, and nobody inherits yesterday's desk without noticing. (Personal
+mode *is* persisted — that is an identity, not a place.) The switch lasts the
+session.
+
+**A switch throws away every cache.** The live array, the wallboard's today
+counts, the historical weeks, the Closed list's per-range cache and the
+ticket-timeline cache are all scoped to one project, so `switchProject()`
+clears all of them rather than keying five caches by desk. Nobody flips desk
+in a loop, and a row left over from the other desk opens a timeline the
+server's key guard is entitled to refuse. The open timeline modal is closed
+for the same reason. Kept across a switch: Personal mode, auto-refresh, which
+tab you are on, and the tier/SLA pickers (both desks use the same tiers and
+the same six clocks). Reset: the two assignee pickers, since the desks are
+staffed by different people and a name from one filters the other to nothing.
+
+**In-flight fetches are dropped by `projectEpoch`**, bumped on every switch;
+each loader captures it and re-checks after every await. This is not
+belt-and-braces: the ANZ queue is 395 open tickets, i.e. several pages, so
+switching mid-fetch is the normal case. The Closed list's guard needs the
+epoch *as well as* its range key, because both desks use the same 13 range
+keys — "still the range on screen" no longer implies "still the desk on
+screen". See trap 6 for the bug this caught.
+
+**The server pin is a list, not a key.** `JIRA_PROJECT_KEYS` (default
+`TAC,TAPC`) feeds one `JQL_PROJECT_RE` and one `ISSUE_KEY_RE`, and the keys
+are validated against `/^[A-Z][A-Z0-9_]{0,9}$/` before being interpolated into
+those RegExps — an env var reaching a RegExp is how a guard gets silently
+widened. The legacy singular `JIRA_PROJECT_KEY` is still honoured when the
+plural is unset, but it *hides the other desk*, so the server warns about that
+at boot rather than leaving a 403 to look like a Jira permission problem.
+**A `.env` from before this change pins `JIRA_PROJECT_KEY=TAC` and must be
+updated** — `.env.example` now carries the plural form.
+
+## 9. Tested vs untested
 
 Verified: server boots; refuses to start on missing/short config; both API
 routes return 401 when signed out; mismatched OAuth `state` is rejected; the
@@ -736,7 +1012,8 @@ Verified:
   the pager — including a fake Jira that returns 10-row pages, one that omits
   `isLast` entirely, and a failing `/api/count`.
 - **Driven in a real browser** via the static harness: the SLA picker's panel
-  stays open across toggles, its button label tracks (All 6 → 3 of 6 → None),
+  stays open across toggles, its button label tracks (All 6 → 3 of 6 → None —
+  the picker offered six clocks at the time; it now offers five),
   and the red row count moves with it (7 → 6 → 3 → 0) in step with the summary
   line. Both "None" empty states and the no-pager state render as intended, and
   a failed fetch shows one error box with the controls still usable.
@@ -749,7 +1026,8 @@ written to fail soft (the pager degrades to "the rest" and the list still
 works), so a wrong endpoint costs the "of 5,225" label and nothing else. If the
 label is missing, that call is why.
 
-Also unverified in the real app: whether the 13-field `CLOSED_FIELDS` request
+Also unverified in the real app: whether the (then 13-field, now 12-field)
+`CLOSED_FIELDS` request
 makes Jira shrink pages far enough to make "Load more" feel slow on the
 migration quarter. The pager logic handles short pages, but the wall-clock cost
 per click is a guess.
@@ -871,12 +1149,109 @@ closes the panel and un-presses the button, ticking a box inside the panel
 still filters (10 rows → 7) and leaves it open with its label updated, and
 opening a second panel still replaces the first rather than stacking.
 
+**Session of 8 Sep 2026 — the desk switcher, and the Closed tab's SLA picker
+narrowed to five clocks.** The first session to drive the *real page* end to
+end: `views/index.html` was served unmodified by a stub of the three API
+routes, fed real Jira payloads for both desks pulled through the Atlassian MCP
+connector (42 UK open / 30 UK closed, 100 ANZ open / 50 ANZ closed), and
+driven in a browser. Still no Jira OAuth session, so the app's own proxy path
+to Jira remains unexercised.
+
+Verified in that browser:
+
+- The header picker lists both desks, wears the brand typography with our own
+  chevron (one, not two), and recolours on hover.
+- Switching desk repaints everything: UK 42 open → ANZ 100 open, the status
+  chart gains `Scheduled With Partner`, the priority ring gains P1, the
+  assignee list changes people, and the page/tab title tracks the desk.
+- **Priority tier 1 renders for the first time** — ANZ's live P1 (`TAPC-17104`)
+  sits above the breach tier. Section 8's long-standing "tier 1 could not be
+  exercised against real data" caveat is now closed on the ANZ desk.
+- Switching *while on* the Closed tab re-queries in place (ANZ 50 rows and its
+  assignee list → UK 30 rows and its own), and the SLA panel left open across
+  the switch re-renders with its selection intact.
+- An open ticket-timeline modal closes on a switch and body scroll is
+  restored; `detailCache`, `closedCache`, the assignee pickers and the drill
+  state all reset, while `activeTab` and the tier/SLA pickers do not.
+- Historical and Wallboard both follow the desk, and the wallboard title names
+  it.
+- **The race in trap 6 was found and then fixed here**: with the UK desk's
+  fetch deliberately slowed 2.5s and a switch to ANZ 200ms in, `RAW_ISSUES`
+  ended up holding 42 UK tickets under an ANZ header showing 100. After the
+  fix the same run leaves every array on TAPC.
+- The five-option SLA picker (Restoration unticked, no `Time with Agent`) and
+  its "SLA: 4 of 5" label, in the real control rather than a harness.
+
+Verified outside the browser:
+
+- **43 real JQL queries captured from that browser run** (20 UK, 23 ANZ, six
+  distinct shapes) were fed through the *real* server-side pin extracted from
+  `server.js` — all accepted. The pin's own suite adds the near-misses
+  (`TACPC`, `TAC2`, `TAPCX`, `project in (...)`, a missing project clause),
+  the issue-key shapes for both desks (`TAPC-17135` yes, `TACPC-1` no,
+  `TAC-6225 OR 1=1` no, a newline-injected key no), the legacy single-key
+  fallback still excluding ANZ, the plural winning over the legacy name, and
+  seven malformed key lists — including a RegExp-injection attempt
+  (`TAC,(TAP|.*)`) — refusing to boot.
+- **`server.js` was booted for real** on spare ports: both API routes and both
+  `/api/issue` routes answer 401 signed out, an anonymous `/` still serves
+  only the sign-in page (no dashboard markup), a bad key list exits 1 with a
+  named rejection, and the legacy-variable warning prints.
+
+**Untested here:** `/api/count` against the real Jira endpoint. Trap 7 explains
+why its guard could never have worked before today, so the pager's "of N"
+label has never once been seen working — it is the first thing to check with
+real credentials, along with `/api/issue/:key` through the real proxy.
+
+**Session of 9 Sep 2026 — the Vendor Bugs tab.** Same technique as the desk
+switcher: the real `views/index.html` served by a stub of the API routes, fed
+the real 27 UK vendor tickets and the real (empty) ANZ result pulled through
+the Atlassian connector, then driven in a browser. **No screenshots this run** —
+the app window was minimized, so the visual check was done through the live
+DOM rather than by eye. Still no Jira OAuth session.
+
+- **Fields were read from Jira's own create-meta**, not guessed: the four ids
+  in section 2, including the trap that a second field shares the name "Third
+  Party Status" and that no "Last Update Date" field exists.
+- **Counts confirmed by JQL before any code was written**: UK 27 matches (27
+  of them open, so the open/closed question is moot today), ANZ 0 — and ANZ has
+  0 tickets with *any* Third Party Status value, which is why its empty state
+  had to explain itself.
+- **~70 assertions** over those 27 real tickets against the shipped functions:
+  the JQL for both desks (and that it does not use the `in (...)` form), the
+  9/18 section split with no ticket lost or duplicated, version order
+  (`44.1.4` → `v44.5` → `v45` → `v45.1`) with ties broken by oldest update,
+  `v9` before `v10`, the two live status-says-tagged-but-field-empty tickets
+  landing under Awaiting Dev, an undated ticket sorting last, all eight
+  headers, and hostile input in every column (no tag or `on*` attribute
+  survives; the key is escaped into its href).
+- **Eight non-http values were rejected as links** (`javascript:`, `data:`,
+  `file:`, `vbscript:`, a bare host, `TBC`, `#`) while `http://` and
+  `https://` still link.
+- **In the browser**: the tab loads 27 rows under the two headings with the
+  live summary line, versions render in the asserted order, 25 icon links carry
+  `title`/`aria-label` "Dev Ticket URL" with the address never shown, a click
+  on a row opens the timeline while clicks on the key link and the URL icon do
+  not, personal mode empties the list with the "assigned to you" wording,
+  switching to ANZ mid-tab re-queries and shows the desk-named empty state,
+  Refresh re-queries, and switching back restores 9/18.
+- The **vendor JQL the real page sent was captured and fed through the real
+  server-side project pin** (extracted from `server.js`) — accepted for both
+  desks.
+
+**Untested:** a vendor bug that is closed (none exist), a Third Party Status
+value outside the five current options (covered by synthetic input only), and
+whether ANZ ever starts using the field.
+
 **Still untested:** everything on the Historical tab. Its two queries use
 different field sets (`HIST_CREATED_FIELDS` / `HIST_RESOLVED_FIELDS`) and read
 `customfield_10690` (CSAT) and `customfield_10700`, none of which the live-queue
-path touches. Nothing has exercised those against the REST proxy.
+path touches. Nothing has exercised those against the REST proxy — the tab has
+now been *rendered* on both desks against real issues, but through the stub,
+so the proxy path is still the untested part. Nor is it known whether those
+two custom fields are populated at all on the ANZ desk.
 
-## 9. Where things are
+## 10. Where things are
 
 ```
 server.js           OAuth, /api/me, /api/search proxy, static serving
@@ -892,27 +1267,35 @@ file** — and don't reformat the vendor sections.
 Landmarks inside that script:
 
 - Constants (`CLOUD`, `TP_FILTER`, SLA field lists, colours) — top of the block
+- `PROJECTS` / `projectKey` / `currentProject()` — the two desks; the key goes
+  into every JQL below
+- `switchProject()` / `projectEpoch` / `projectStale()` — the switch, the
+  cache reset, and the in-flight-fetch guard (section 8, trap 6)
 - `callSearchTool` / `callMcpTool` — the only functions that talk to the server
 - `resolveSla()` — turns six SLA fields into one state: ticking / paused / completed / breached
 - `closedSlaState()` — the Closed list's *different* rule: ever-breached, over
   the user-selected subset of the six clocks (section 5)
 - `buildTicketTimeline()` / `timeInStatus()` — the ticket history modal's two
-  derived views (section 6)
+  derived views (section 7)
 - `fetchIssueDetail()` — the only per-issue read; walks the changelog
 - `onTicketRowClick()` — the one delegated listener behind every clickable row
 - `buildPriorityList()` — the 11 tiers
 - `CLOSED_RANGES` / `closedJql()` — the 13 date windows and their JQL
+- `vendorJql()` / `vendorSections()` / `compareVendorVersion()` — the Vendor
+  Bugs filter, its two sections and the free-text version sort (section 6)
+- `vendorUrlCell()` — the only place a user-supplied string becomes an href
 - `fetchClosedPage()` / `loadMoreClosed()` / `closedCache` — the Closed list's
   pager and per-range cache
 - `render()` — live tab; `renderPriorityList()` / `renderPriorityTable()`;
-  `renderClosed()` / `renderClosedTable()`; `renderTicketDetail()`;
+  `renderClosed()` / `renderClosedTable()`; `renderVendor()` /
+  `renderVendorTable()`; `renderTicketDetail()`;
   `renderHistorical()`; `renderWallboard()`
 - Personal mode block — identity lookup, `matchesViewer()`, `recomputeViews()`
 
 Chart.js is pinned and hash-verified against the original CDN copy. If you
 replace it, verify the integrity hash rather than trusting a download.
 
-## 10. Likely next tasks
+## 11. Likely next tasks
 
 - **Change a tier rule** → `buildPriorityList()`, keep the take-and-remove pattern
 - **Add a field to the table** → `PRIORITY_THEAD` and `priorityRow()`; add the
@@ -926,17 +1309,27 @@ replace it, verify the integrity hash rather than trusting a download.
   what shows by default; add the field id to `DETAIL_FIELDS` in `server.js`
   only if the *current* value is needed, not just its history
 - **Add comments to the timeline** → a third `/api/issue/:key/comment` proxy;
-  bodies are ADF and need flattening (section 6 says why they were left out)
+  bodies are ADF and need flattening (section 7 says why they were left out)
 - **Make the timeline work for linked ESD/DEVX tickets** → the `ISSUE_KEY_RE`
   guard in `server.js` pins the project by key shape
 - **Add a date range to the Closed list** → one entry in `CLOSED_RANGES`; set
   `live` to whether the window includes today, since that picks the cache TTL
+- **Change which tickets count as vendor bugs** → `vendorJql()`; keep it
+  expressed as "set, and not the parked value" so a new Third Party Status
+  option is not silently dropped (section 6)
+- **Add a column to Vendor Bugs** → `VENDOR_THEAD`, `vendorRow()` and
+  `VENDOR_COLS` together, plus the field id in `VENDOR_FIELDS`
 - **Change what counts as an SLA breach on closed tickets** →
   `closedSlaState()`, not `resolveSla()` — see section 5 on why they differ
 - **Show the 7 reopened tickets somewhere** → `loadLive()`'s
   `resolution = Unresolved` is what hides them (section 2)
-- **Multiple projects** → `JIRA_PROJECT_KEY` guard in `server.js` is single-project;
-  the front-end hardcodes `project = TAC` in its JQL
+- **Add a third desk** → one entry in `PROJECTS` (`views/index.html`) plus its
+  key in `JIRA_PROJECT_KEYS`; nothing else, provided the project carries the
+  same statuses, priorities, tier values and SLA fields (section 2 says how
+  that was checked for ANZ)
+- **Show two desks at once** → declined 8 Sep 2026 (section 8); would need
+  `project in (...)` JQL *and* a widened server pin, which today matches only
+  `project = <key>`
 - **Survive restarts / run replicas** → swap the in-memory session store for
   `connect-redis`
 - **Permanent wallboard screen** → sessions expire after 12h; a display mode

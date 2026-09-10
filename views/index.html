@@ -90,6 +90,28 @@ body{
 .brand{display:flex;align-items:center;gap:10px}
 .brand-mark{width:26px;height:26px;flex:none;color:var(--sb-lightblue)}
 .brand-name{font-size:18px;line-height:28px;font-weight:600;color:var(--sb-secondary)}
+/* The desk switcher wears the brand name's own typography rather than looking
+   like a form control bolted into the header: transparent until hovered, when
+   it picks up a border to say it is clickable. A native <select>'s arrow
+   cannot be restyled by CSS (see the Assignee/TAC Tier note above), so this
+   uses the same trick .pc-select-wrap does — appearance:none plus our own
+   chevron overlaid, pointer-events:none so it never eats the click. */
+.brand-select-wrap{position:relative;display:inline-flex;align-items:center}
+.brand-select-wrap .ico{
+  position:absolute;right:7px;top:50%;transform:translateY(-50%);
+  pointer-events:none;color:var(--fg-3);transition:color var(--motion-base);
+}
+.brand-select-wrap:hover .ico{color:var(--aa-primary)}
+.brand-select{
+  appearance:none;-webkit-appearance:none;-moz-appearance:none;
+  font-family:inherit;font-size:18px;line-height:28px;font-weight:600;
+  color:var(--sb-secondary);background:transparent;
+  border:1px solid transparent;border-radius:var(--radius-sm);
+  margin-left:-7px;padding:1px 26px 1px 7px;cursor:pointer;
+  transition:border-color var(--motion-base),color var(--motion-base);
+}
+.brand-select:hover{border-color:var(--border-default);color:var(--aa-primary)}
+.brand-select:focus-visible{outline:2px solid var(--sb-primary);outline-offset:1px}
 .badge-view{
   background:var(--primary-30);color:var(--aa-primary);
   font-size:13px;line-height:18px;font-weight:500;
@@ -337,7 +359,7 @@ body{
    specificity and flip a red row grey exactly when the pointer is on it. */
 .tbl tbody tr.row-breach td{background:var(--red-10)}
 .tbl tbody tr.row-breach:hover td{background:var(--red-20)}
-/* The SLA picker lists six names, the longest being "First Response Time" —
+/* The SLA picker's names run long — the longest being "First Response Time" —
    too wide for the TAC Tier panel's 110px, hence its own width. */
 .tt-ms-panel.is-wide{min-width:210px}
 .cl-pager{
@@ -514,6 +536,20 @@ body{
 .sort-ind{color:var(--sb-primary);margin-left:2px}
 .status-swatch{width:10px;height:10px;border-radius:2px;flex:none;display:inline-block}
 .empty{padding:var(--space-6);text-align:center;color:var(--fg-4);font-size:14px}
+/* Vendor Bugs: the Dev Ticket URL cell is an icon, not a URL — the addresses
+   are long help-desk links that would dominate the row. The hit area is
+   padded out so an icon-sized target is still clickable. */
+.vb-link{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;margin:-4px 0;border-radius:var(--radius-sm);
+  color:var(--sb-primary);text-decoration:none;
+  transition:background var(--motion-base),color var(--motion-base);
+}
+.vb-link:hover{background:var(--grey-50);color:var(--aa-primary)}
+.vb-link:focus-visible{outline:2px solid var(--sb-primary);outline-offset:1px}
+/* A Third Party Ticket URL that is not a link (free-text field, see
+   vendorUrlCell) reads as plain muted text rather than pretending to be one. */
+.vb-nolink{color:var(--fg-4);font-size:13px}
 .empty-inline{padding:var(--space-5);text-align:center;color:var(--fg-4);font-size:13px}
 
 /* Badges — design system .badge light-emphasis */
@@ -709,7 +745,10 @@ body{
   <div class="hdr-top">
     <div class="brand">
       <span class="brand-mark" id="brand-mark"></span>
-      <span class="brand-name">Access4 UK TAC</span>
+      <div class="brand-select-wrap" id="project-wrap">
+        <select class="brand-select" id="project-select" title="Switch service desk"
+                aria-label="Service desk" onchange="switchProject(this.value)"></select>
+      </div>
       <span class="badge-view" id="view-badge">Live queue</span>
     </div>
     <div class="hdr-meta">
@@ -729,6 +768,7 @@ body{
     <button class="tab is-active" id="tab-live" onclick="switchTab('live')"></button>
     <button class="tab" id="tab-priority" onclick="switchTab('priority')"></button>
     <button class="tab" id="tab-closed" onclick="switchTab('closed')"></button>
+    <button class="tab" id="tab-vendor" onclick="switchTab('vendor')"></button>
     <button class="tab" id="tab-hist" onclick="switchTab('hist')"></button>
     <button class="tab" id="tab-wall" onclick="switchTab('wall')"></button>
   </div>
@@ -744,6 +784,10 @@ body{
 
 <div id="view-closed" style="display:none">
   <div id="closed-root"></div>
+</div>
+
+<div id="view-vendor" style="display:none">
+  <div id="vendor-root"></div>
 </div>
 
 <div id="view-hist" style="display:none">
@@ -790,6 +834,35 @@ const CLOUD     = '';  // resolved server-side from the signed-in user's Atlassi
 // data to link to either.
 const FALLBACK_SITE = 'https://access4.atlassian.net';
 let   JIRA_BASE     = FALLBACK_SITE + '/browse';
+
+// ── Which service desk ───────────────────────────────────────────────────────
+// Two Jira projects on the same site: the UK queue (TAC) and the ANZ queue
+// (TAPC, id 10296, "Service Desk – ANZ TAC"). Confirmed against live data on
+// 8 Sep 2026 that the ANZ desk carries the SAME statuses, the same priority
+// scheme, the same TAC Tier values (1.5/2.0/2.5) and all six SLA custom
+// fields, so every view, tier rule and colour map works on either desk with
+// nothing but the project key in the JQL changed.
+//
+// `key` goes straight into that JQL and must be one of the server's
+// PROJECT_KEYS, or /api/search answers 403 project_not_allowed.
+const PROJECTS = [
+  { key: 'TAC',  name: 'Access4 UK TAC'  },
+  { key: 'TAPC', name: 'Access4 ANZ TAC' },
+];
+// Deliberately NOT persisted to localStorage: every fresh load opens the UK
+// desk, so a wallboard TV and a shared link always start from the same place,
+// and the switch lasts for the session. (Personal mode does persist — that is
+// an identity, not a place.)
+let projectKey = PROJECTS[0].key;
+function currentProject() { return PROJECTS.find(p => p.key === projectKey) || PROJECTS[0]; }
+
+// Bumped by every switch. A fetch started before the switch is still in
+// flight afterwards — the ANZ desk is 395 open tickets, i.e. several pages,
+// so this is the normal case rather than a corner one — and its result must
+// be dropped rather than written into the view now on screen. Each loader
+// captures the value at entry and re-checks it after every await.
+let projectEpoch = 0;
+function projectStale(epoch) { return epoch !== projectEpoch; }
 const TP_FILTER = '("Third Party Status[Dropdown]" not in (Duplicate, "Fix Deployed", "Version Tagged", "Allocated to Dev") OR "Third Party Status[Dropdown]" is EMPTY)';
 const MCP_SERVER   = 'Atlassian Rovo';            // connector display name
 const MCP_TOOL     = 'searchJiraIssuesUsingJql';  // upstream tool name on that connector
@@ -801,9 +874,17 @@ const MCP_USERINFO = 'atlassianUserInfo';         // resolves to whoever is VIEW
 // credential. Everything below this line is unchanged from the original
 // dashboard: it only ever needed "give me issues for this JQL".
 
-function httpError(status, text) {
+function httpError(status, text, bodyCode) {
   const e = new Error(text || ('HTTP ' + status));
   if (status === 401) e.code = 'needs_reauth';
+  // A 403 from THIS app's own project pin is a configuration fact, not a Jira
+  // permission one — and the two read identically in the error box, which sent
+  // somebody hunting through Jira permissions on 8 Sep 2026 when the real
+  // cause was a server process still running the pin from before the ANZ desk
+  // existed. Same failure shape as the bare-404 case below: views/index.html
+  // is re-read from disk per request, server.js is not, so the front end can
+  // ask for a project the running server was never told to allow.
+  else if (status === 403 && (bodyCode === 'project_not_allowed' || bodyCode === 'issue_not_allowed')) e.code = bodyCode;
   else if (status === 403) e.code = 'blocked_by_policy';
   // A 404 carrying no JSON body never reached a route handler: every route in
   // server.js answers errors as JSON. In practice that means the running
@@ -821,6 +902,8 @@ function mcpErrorMessage(err) {
   switch (err && err.code) {
     case 'needs_reauth':       return 'Your session has expired. Reload the page to sign in again.';
     case 'blocked_by_policy':  return 'Your Jira account does not have permission to read this queue.';
+    case 'project_not_allowed': return 'The server refused that query: it is not configured to allow this service desk. Set JIRA_PROJECT_KEYS (e.g. TAC,TAPC) in the environment and restart the server process — server.js reads it once at boot, so a config change needs a restart even though the page itself reloads from disk.';
+    case 'issue_not_allowed':  return 'That ticket is outside the projects this server allows. If the desk was added recently, set JIRA_PROJECT_KEYS and restart the server process.';
     case 'route_missing':      return 'That API route does not exist on the server. If the dashboard was updated recently, restart the server process — the page reloads from disk on every request, but server.js does not.';
     case 'server_unavailable': return 'Jira is temporarily unreachable. Retrying shortly.';
     case 'upstream_error':     return (err.message || 'Could not reach Jira.');
@@ -831,9 +914,13 @@ function mcpErrorMessage(err) {
 async function apiFetch(url, options) {
   const res = await fetch(url, options);
   if (!res.ok) {
-    let detail = '';
-    try { const j = await res.json(); detail = j.message || j.error || ''; } catch (e) {}
-    throw httpError(res.status, detail);
+    let detail = '', bodyCode = '';
+    try {
+      const j = await res.json();
+      detail = j.message || j.error || '';
+      bodyCode = j.error || '';
+    } catch (e) {}
+    throw httpError(res.status, detail, bodyCode);
   }
   return res.json();
 }
@@ -1184,11 +1271,28 @@ function formatWeekLabel(s,e) {
 }
 
 // ── Static chrome (icons injected once) ──────────────────────────────────────
+// Both desks come from one list, so adding a third project is one entry in
+// PROJECTS plus its key in the server's JIRA_PROJECT_KEYS — no markup.
+function paintProjectSelect() {
+  const sel = document.getElementById('project-select');
+  sel.innerHTML = PROJECTS.map(p =>
+    `<option value="${p.key}"${p.key === projectKey ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  // Appended once, here at boot: switchProject deliberately does NOT rebuild
+  // this control, since replacing an element while its own change event is
+  // being handled is the shape of bug that trap 5 in CLAUDE.md describes.
+  if (!document.getElementById('project-wrap').querySelector('svg')) {
+    document.getElementById('project-wrap').insertAdjacentHTML('beforeend', ico('chevron-down', 11));
+  }
+  document.title = currentProject().name + ' Support Queue';
+}
+
 function paintChrome() {
   document.getElementById('brand-mark').innerHTML = brandMark(26);
+  paintProjectSelect();
   document.getElementById('tab-live').innerHTML = ico('gauge-high',15)        + '<span>Live queue</span>';
   document.getElementById('tab-priority').innerHTML = ico('triangle-exclamation',15) + '<span>Priority list</span>';
   document.getElementById('tab-closed').innerHTML = ico('circle-check',15)    + '<span>Closed</span>';
+  document.getElementById('tab-vendor').innerHTML = ico('building',15)        + '<span>Vendor Bugs</span>';
   document.getElementById('tab-hist').innerHTML = ico('clock-rotate-left',15) + '<span>Historical</span>';
   document.getElementById('tab-wall').innerHTML = ico('desktop',15)           + '<span>Wallboard</span>';
   document.getElementById('btn-prev').innerHTML = ico('chevron-left',12)  + '<span>Previous</span>';
@@ -1197,8 +1301,10 @@ function paintChrome() {
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 let histEverLoaded=false;
-const TAB_LABELS = {live:'Live queue', priority:'Priority list', closed:'Closed', hist:'Historical', wall:'Wallboard'};
+let activeTab='live';   // which view is on screen; switchProject reloads it
+const TAB_LABELS = {live:'Live queue', priority:'Priority list', closed:'Closed', vendor:'Vendor Bugs', hist:'Historical', wall:'Wallboard'};
 function switchTab(tab) {
+  activeTab = TAB_LABELS[tab] ? tab : 'live';
   for (const t of Object.keys(TAB_LABELS)) {
     document.getElementById('view-' + t).style.display = tab === t ? '' : 'none';
     document.getElementById('tab-' + t).classList.toggle('is-active', tab === t);
@@ -1211,8 +1317,72 @@ function switchTab(tab) {
   // unfetched until somebody actually opens the tab — the live queue's own
   // load is slow enough without a second pull racing it on every page view.
   if (tab==='closed'&&!closedEverLoaded) { closedEverLoaded=true; loadClosed(false); }
+  // Same reasoning for Vendor Bugs: its query is its own, and none of its
+  // tickets are in RAW_ISSUES to begin with (see the section header).
+  if (tab==='vendor'&&!vendorEverLoaded) { vendorEverLoaded=true; loadVendor(false); }
   if (tab==='wall') setTimeout(renderWallboard, 50); // wait for display:block to take effect
 }
+// ── Switching desk ───────────────────────────────────────────────────────────
+// Everything the browser is holding is scoped to ONE project: the live array,
+// the wallboard's today counts, the historical weeks, the Closed list's
+// per-range cache and the ticket-timeline cache. So a switch throws all of it
+// away rather than keying five caches by project — nobody flips desk in a
+// loop, and a row left over from the other desk would open a timeline the
+// server's key guard is entitled to refuse.
+//
+// Kept across a switch: Personal mode (an identity, valid on both desks), the
+// auto-refresh setting, which tab you are on, and the tier/SLA pickers (both
+// desks use the same 1.5/2.0/2.5 tiers and the same six SLA clocks). Reset:
+// the assignee pickers, because the two desks are staffed by different people
+// and a name from one filters the other down to nothing.
+function switchProject(key) {
+  const next = PROJECTS.find(p => p.key === key);
+  if (!next || next.key === projectKey) {
+    document.getElementById('project-select').value = projectKey;   // reject a tampered value
+    return;
+  }
+  projectKey = next.key;
+  projectEpoch++;                      // in-flight fetches for the old desk now drop their results
+  document.title = currentProject().name + ' Support Queue';
+  // Setting .value keeps the control honest when the switch came from
+  // anywhere other than the control itself; it is not a rebuild of the
+  // element, so it cannot swallow the click that caused it (trap 5).
+  document.getElementById('project-select').value = projectKey;
+
+  closeTicketDetail();                 // the open ticket belongs to the old desk
+  RAW_ISSUES = []; ALL_ISSUES = [];
+  rawWbToday = { created: null, resolved: null };
+  wbTodayTickets = { created: null, resolved: null };
+  rawHistCreated = []; rawHistResolved = [];
+  histCreated = []; histResolved = [];
+  histEverLoaded = false; activeHistDrill = null;
+  closedCache.clear();
+  closedEverLoaded = false; closedBusy = false; closedError = '';
+  vendorIssues = null; vendorFetchedAt = 0;
+  vendorEverLoaded = false; vendorBusy = false; vendorError = '';
+  detailCache.clear();
+  activeDrill = null; activeAssigneeDrill = null; activeStatusDrill = null; activeSubDrill = {};
+  expandedLinkDrills = new Set(); expandedClosedLinks = new Set();
+  priorityAssignee = ''; closedAssignee = '';
+
+  const spinner = label =>
+    `<div class="loading-state"><div class="spinner"></div><span>${esc(label)}</span></div>`;
+  document.getElementById('root').innerHTML = spinner('Fetching ' + next.name + ' from Jira…');
+  document.getElementById('priority-root').innerHTML = spinner('Fetching ' + next.name + ' from Jira…');
+  document.getElementById('closed-root').innerHTML = '';
+  document.getElementById('vendor-root').innerHTML = '';
+  document.getElementById('hist-root').innerHTML = spinner('Loading…');
+  document.getElementById('ts').textContent = '—';
+
+  // loadLive() feeds four of the five views (and re-renders the wallboard).
+  // The two lazy tabs re-fetch only if that is the tab being looked at; the
+  // *EverLoaded flags above make the others fetch on next visit instead.
+  loadLive();
+  if (activeTab === 'closed') { closedEverLoaded = true; loadClosed(false); }
+  if (activeTab === 'vendor') { vendorEverLoaded = true; loadVendor(false); }
+  if (activeTab === 'hist')   { histEverLoaded   = true; loadHistorical(); }
+}
+
 function changeWeek(delta) {
   const next=weekOffset+delta;
   if (next>0) return;
@@ -1230,15 +1400,20 @@ async function loadHistorical() {
   document.getElementById('btn-next').disabled=weekOffset>=0;
   document.getElementById('hist-root').innerHTML='<div class="loading-state"><div class="spinner"></div><span>Loading historical data…</span></div>';
   activeHistDrill=null;
-  const base=`project = TAC AND ${TP_FILTER}`;
+  const epoch = projectEpoch;
+  const base=`project = ${projectKey} AND ${TP_FILTER}`;
   try {
     // Resolved query runs FIRST to guarantee a fresh (uncached) response with SLA fields.
     // Created query runs second — even if cached, it only needs basic fields.
-    rawHistResolved = await jiraSearch(`${base} AND ${getJqlWeekFilter('resolved', weekOffset)} ORDER BY resolved ASC`, HIST_RESOLVED_FIELDS);
-    rawHistCreated  = await jiraSearch(`${base} AND ${getJqlWeekFilter('created',  weekOffset)} ORDER BY created  ASC`, HIST_CREATED_FIELDS);
+    const resolved = await jiraSearch(`${base} AND ${getJqlWeekFilter('resolved', weekOffset)} ORDER BY resolved ASC`, HIST_RESOLVED_FIELDS);
+    const created  = await jiraSearch(`${base} AND ${getJqlWeekFilter('created',  weekOffset)} ORDER BY created  ASC`, HIST_CREATED_FIELDS);
+    if (projectStale(epoch)) return;
+    rawHistResolved = resolved;
+    rawHistCreated  = created;
     recomputeViews();
     renderHistorical();
   } catch(err) {
+    if (projectStale(epoch)) return;
     document.getElementById('hist-root').innerHTML=errorHtml(err.message);
   }
 }
@@ -1663,6 +1838,7 @@ function applyPersonalView() {
   if (RAW_ISSUES.length) render(ALL_ISSUES);
   if (histEverLoaded) renderHistorical();
   if (closedEverLoaded) renderClosed();
+  if (vendorEverLoaded) renderVendor();
   renderWallboard();
 }
 
@@ -2164,10 +2340,25 @@ const SLA_FIELD_NAMES = {
   customfield_10906: 'Response Target',
 };
 
+// The Closed tab's SLA picker offers FIVE of the six clocks, and starts with
+// four of them ticked. Both narrowings are the business's call (8 Sep 2026)
+// and are deliberately local to this tab: SLA_ALL still carries all six for
+// the live queue's resolveSla() and for the ticket timeline, where dropping a
+// clock would hide real breaches.
+//
+//  - "Time with Agent" (customfield_10970) is not offered at all. It is not
+//    fetched below either, since nothing on this tab can read it once it is
+//    unpickable.
+//  - "Restoration" (customfield_10968) is offered but starts unticked, so the
+//    default red-row count and the SLA Total tile answer over the other four.
+//    It is still fetched — ticking it has to work without a re-query.
+const CLOSED_SLA_OPTIONS = SLA_ALL.filter(f => f !== 'customfield_10970');
+const CLOSED_SLA_DEFAULT = CLOSED_SLA_OPTIONS.filter(f => f !== 'customfield_10968');
+
 // resolutiondate drives both the sort and the range filter. No 'created' or
 // 'updated': neither is displayed, and every extra field shrinks Jira's page
 // size, which costs pager round-trips directly on the big ranges.
-const CLOSED_FIELDS = ['summary','status','priority','assignee','resolutiondate','issuelinks',TAC_TIER_FIELD,...SLA_ALL];
+const CLOSED_FIELDS = ['summary','status','priority','assignee','resolutiondate','issuelinks',TAC_TIER_FIELD,...CLOSED_SLA_OPTIONS];
 
 // ── Date ranges ───────────────────────────────────────────────────────────────
 // Every bound uses Jira's OWN date functions rather than a literal like
@@ -2238,7 +2429,7 @@ function closedJql(rangeKey) {
   // live data it excludes nothing from the closed set (387 of 387 over 90
   // days), so it costs nothing here and would matter silently if the Third
   // Party Status values ever changed.
-  return `project = TAC AND statusCategory = Done AND ${r.jql()} AND ${TP_FILTER} ORDER BY resolved DESC`;
+  return `project = ${projectKey} AND statusCategory = Done AND ${r.jql()} AND ${TP_FILTER} ORDER BY resolved DESC`;
 }
 
 // ── SLA breach state for a closed ticket ──────────────────────────────────────
@@ -2261,7 +2452,7 @@ function slaEverBreached(issue, field) {
 // for any of them at all — a ticket with no SLA data is neither met nor
 // breached and must not be painted green.
 function closedSlaState(issue) {
-  const chosen = SLA_ALL.filter(f => selectedClosedSlas.has(f));
+  const chosen = CLOSED_SLA_OPTIONS.filter(f => selectedClosedSlas.has(f));
   const hasData = chosen.some(f => issue.fields?.[f]);
   const breached = chosen.filter(f => slaEverBreached(issue, f)).map(f => SLA_FIELD_NAMES[f]);
   return { hasData, breached, met: hasData && breached.length === 0 };
@@ -2281,7 +2472,7 @@ function closedSlaCell(issue) {
 let closedRange    = 'currentDay';   // the default the business asked for
 let closedAssignee = '';             // '' = everyone
 let closedTacTiers = new Set(TAC_TIER_OPTIONS);
-let selectedClosedSlas = new Set(SLA_ALL);
+let selectedClosedSlas = new Set(CLOSED_SLA_DEFAULT);
 let closedPanelOpen = null;          // 'tier' | 'sla' | null — only one at a time
 let closedBusy  = false;
 let closedError = '';
@@ -2371,8 +2562,16 @@ async function fetchClosedTotal(rangeKey) {
   } catch (e) { return null; }
 }
 
+// The cache key is the range, and both desks use the same 13 ranges, so
+// "still the range on screen" no longer means "still the desk on screen" —
+// hence the epoch in the guard as well.
+function closedStillCurrent(rangeKey, epoch) {
+  return rangeKey === closedRange && !projectStale(epoch);
+}
+
 async function loadClosed(force) {
   const rangeKey = closedRange;
+  const epoch = projectEpoch;
   if (!force) {
     const hit = closedCacheGet(rangeKey);
     if (hit) { closedError = ''; renderClosed(); return; }
@@ -2389,16 +2588,19 @@ async function loadClosed(force) {
     // The range may have been switched again while this was in flight, so
     // store the result under the range it was fetched FOR and only repaint if
     // that is still the one on screen.
-    closedCacheSet(rangeKey, { issues: page.issues, nextToken: page.nextToken, total, fetchedAt: Date.now() });
+    if (!projectStale(epoch)) {
+      closedCacheSet(rangeKey, { issues: page.issues, nextToken: page.nextToken, total, fetchedAt: Date.now() });
+    }
   } catch (err) {
-    if (rangeKey === closedRange) closedError = err.message;
+    if (closedStillCurrent(rangeKey, epoch)) closedError = err.message;
   } finally {
-    if (rangeKey === closedRange) { closedBusy = false; renderClosed(); }
+    if (closedStillCurrent(rangeKey, epoch)) { closedBusy = false; renderClosed(); }
   }
 }
 
 async function loadMoreClosed(all) {
   const rangeKey = closedRange;
+  const epoch = projectEpoch;
   const entry = closedCacheGet(rangeKey);
   if (!entry || !entry.nextToken || closedBusy) return;
   closedBusy = true; closedError = ''; renderClosed();
@@ -2411,13 +2613,14 @@ async function loadMoreClosed(all) {
       // "Load all" on a 2-minute-TTL range cannot expire out from under the
       // walk it is in the middle of.
       entry.fetchedAt = Date.now();
+      if (projectStale(epoch)) return;
       closedCacheSet(rangeKey, entry);
-      if (rangeKey === closedRange) renderClosed();
-    } while (all && entry.nextToken && rangeKey === closedRange);
+      if (closedStillCurrent(rangeKey, epoch)) renderClosed();
+    } while (all && entry.nextToken && closedStillCurrent(rangeKey, epoch));
   } catch (err) {
-    if (rangeKey === closedRange) closedError = err.message;
+    if (closedStillCurrent(rangeKey, epoch)) closedError = err.message;
   } finally {
-    if (rangeKey === closedRange) { closedBusy = false; renderClosed(); }
+    if (closedStillCurrent(rangeKey, epoch)) { closedBusy = false; renderClosed(); }
   }
 }
 
@@ -2474,13 +2677,16 @@ function closedTierButtonLabel() {
   if (closedTacTiers.size === 0) return 'TAC Tier: None';
   return 'TAC Tier: ' + TAC_TIER_OPTIONS.filter(t => closedTacTiers.has(t)).join(', ');
 }
-// Six names, the longest 19 characters, so spelling out the selection would
-// make this button wider than the whole rest of the control row. A count
-// reads at a glance instead; the panel shows which.
+// The names are long — the longest 19 characters — so spelling out the
+// selection would make this button wider than the whole rest of the control
+// row. A count reads at a glance instead; the panel shows which. The total
+// comes from CLOSED_SLA_OPTIONS rather than being written out, so adding or
+// removing an option cannot leave the label claiming the wrong number.
 function closedSlaButtonLabel() {
-  if (selectedClosedSlas.size === SLA_ALL.length) return 'SLA: All 6';
+  const all = CLOSED_SLA_OPTIONS.length;
+  if (selectedClosedSlas.size === all) return `SLA: All ${all}`;
   if (selectedClosedSlas.size === 0) return 'SLA: None';
-  return `SLA: ${selectedClosedSlas.size} of ${SLA_ALL.length}`;
+  return `SLA: ${selectedClosedSlas.size} of ${all}`;
 }
 
 function closedMultiSelect(which, label, options) {
@@ -2616,7 +2822,7 @@ function closedSlaAttainment(tickets, field) {
 // requiring a ticket to meet ALL selected SLAs is strictly harder than
 // meeting any one of them.
 function closedSlaTotal(tickets) {
-  const slaCount = SLA_ALL.filter(f => selectedClosedSlas.has(f)).length;
+  const slaCount = CLOSED_SLA_OPTIONS.filter(f => selectedClosedSlas.has(f)).length;
   // With nothing selected there is no question to answer. Guarded first
   // because closedSlaState() finds no breaches in that state, which would
   // otherwise read as a perfect 100%.
@@ -2703,7 +2909,7 @@ function renderClosed() {
            <input type="checkbox" ${closedTacTiers.has(t) ? 'checked' : ''} onchange="onClosedTierCheck('${t}', this.checked)">
            <span>${esc(t)}</span>
          </label>`).join('');
-  const slaPanel = SLA_ALL.map(f => `<label class="tt-ms-option">
+  const slaPanel = CLOSED_SLA_OPTIONS.map(f => `<label class="tt-ms-option">
            <input type="checkbox" ${selectedClosedSlas.has(f) ? 'checked' : ''} onchange="onClosedSlaCheck('${f}', this.checked)">
            <span>${esc(SLA_FIELD_NAMES[f] || f)}</span>
          </label>`).join('');
@@ -2823,6 +3029,278 @@ function closedPager(entry, shownCount) {
     </button>
     <span class="cl-pager-note">${entry.issues.length.toLocaleString('en-GB')} loaded${entry.total != null ? ' of ' + entry.total.toLocaleString('en-GB') : ''}${filterNote}. The filters and the assignee list only see what is loaded.</span>
   </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Vendor Bugs ───────────────────────────────────────────────────────────────
+// Tickets handed to the upstream vendor and now waiting on THEM to ship
+// something: Third Party Status set to anything other than "Waiting for Third
+// Party". Two sections — fixes with a version tagged, then everything still
+// sitting with dev — each oldest-touched first, because the point of the list
+// is "what has been waiting longest".
+//
+// **These tickets are in no other view.** TP_FILTER, which every other list
+// applies, excludes exactly the Third Party Status values this tab selects for
+// (Duplicate, Fix Deployed, Version Tagged, Allocated to Dev), so none of them
+// are in RAW_ISSUES. That is the whole reason the tab exists, and it is why
+// this view runs its own query — the same situation as the Closed list, for a
+// different reason.
+//
+// Fields confirmed against the live instance on 9 Sep 2026 from the TAC
+// create-meta (project TAC, issue type Incident):
+//
+//   customfield_10908  Third Party Status      single-select, 5 options
+//   customfield_10866  Third Party Dev Reference   free text ("OMP-5945")
+//   customfield_10867  Tagged Version              free text ("v44.5", "44.1.4")
+//   customfield_10868  Third Party Ticket URL      free text, NOT a url field
+//
+// There is no "Last Update Date" custom field — that column is Jira's own
+// `updated`. Note also a second, unrelated field named "[HUBSPOT MIGRATED]
+// Third Party Status" exists; the JQL name `"Third Party Status[Dropdown]"`
+// (the same literal TP_FILTER uses) is what disambiguates them.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VENDOR_TPS_FIELD = 'customfield_10908';   // Third Party Status
+const VENDOR_REF_FIELD = 'customfield_10866';   // Third Party Dev Reference
+const VENDOR_VER_FIELD = 'customfield_10867';   // Tagged Version
+const VENDOR_URL_FIELD = 'customfield_10868';   // Third Party Ticket URL
+// The one Third Party Status that is NOT a vendor bug: nobody upstream has
+// picked it up yet, so there is nothing to chase a version for.
+const VENDOR_EXCLUDED_STATUS = 'Waiting for Third Party';
+const VENDOR_FIELDS = ['summary', 'status', 'assignee', 'updated',
+  VENDOR_TPS_FIELD, VENDOR_REF_FIELD, VENDOR_VER_FIELD, VENDOR_URL_FIELD];
+const VENDOR_COLS = 8;   // keep in sync with VENDOR_THEAD — the section headings span it
+const VENDOR_TTL = 2 * 60 * 1000;   // includes live tickets, so short — same as CLOSED_TTL_LIVE
+
+// Written as "is not EMPTY AND != Waiting for Third Party" rather than
+// "in (Allocated to Dev, Version Tagged, Fix Deployed, Duplicate)". The two
+// are identical against today's five options, but a sixth option added in Jira
+// later would silently never appear in this tab under the `in` form, and the
+// business rule is "anything the vendor has taken on". Same instinct as the
+// TAC Tier filter treating an unknown value as visible rather than dropped.
+//
+// No resolution or statusCategory clause: the rule as specified is "any
+// ticket". Every one of the 27 UK matches was open on 9 Sep 2026 and the ANZ
+// desk had none at all, so this costs nothing today — but if closed vendor
+// bugs ever pile up here, `AND statusCategory != Done` is the line to add.
+function vendorJql() {
+  return `project = ${projectKey}`
+       + ` AND "Third Party Status[Dropdown]" is not EMPTY`
+       + ` AND "Third Party Status[Dropdown]" != "${VENDOR_EXCLUDED_STATUS}"`
+       + ` ORDER BY updated ASC`;
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+// One array, not a keyed cache: there is a single query with no range or pager
+// to vary it. TTL rather than a hard refresh, matching the Closed list's live
+// ranges; nothing is persisted.
+let vendorIssues    = null;   // null = never loaded, [] = loaded and empty
+let vendorFetchedAt = 0;
+let vendorBusy      = false;
+let vendorError     = '';
+let vendorEverLoaded = false;
+
+// ── Field readers ────────────────────────────────────────────────────────────
+function vendorStatusOf(issue) { return issue.fields?.[VENDOR_TPS_FIELD]?.value || ''; }
+function vendorRefOf(issue)    { return String(issue.fields?.[VENDOR_REF_FIELD] || '').trim(); }
+function vendorVersionOf(issue){ return String(issue.fields?.[VENDOR_VER_FIELD] || '').trim(); }
+function vendorUrlOf(issue)    { return String(issue.fields?.[VENDOR_URL_FIELD] || '').trim(); }
+
+// Tagged Version is free text and the values are not written consistently:
+// the live set on 9 Sep 2026 is "44.1.4", "v44.5", "v45", "v45.1". A plain
+// string sort splits those into two groups, because a digit sorts before a
+// letter — "44.1.4" would land nowhere near "v44.5" despite being the earlier
+// release. So: drop a leading "v", then compare segment by segment, numerically
+// where both segments are numeric. Ascending, i.e. the oldest tagged release
+// first, matching the oldest-first intent of the rest of the ordering.
+function vendorVersionParts(v) {
+  return String(v).trim().replace(/^v/i, '').split(/[.\-_ ]+/).filter(Boolean);
+}
+function compareVendorVersion(a, b) {
+  const pa = vendorVersionParts(a), pb = vendorVersionParts(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i], y = pb[i];
+    if (x === undefined) return -1;          // "v45" before "v45.1"
+    if (y === undefined) return 1;
+    const nx = Number(x), ny = Number(y);
+    if (Number.isFinite(nx) && Number.isFinite(ny)) {
+      if (nx !== ny) return nx - ny;
+    } else {
+      const c = String(x).localeCompare(String(y), 'en', { numeric: true, sensitivity: 'base' });
+      if (c) return c;
+    }
+  }
+  return 0;
+}
+function vendorUpdatedMs(issue) {
+  const t = Date.parse(issue.fields?.updated || '');
+  // A ticket with no `updated` sorts last rather than pretending to be ancient
+  // and jumping to the top of an oldest-first list.
+  return Number.isFinite(t) ? t : Infinity;
+}
+
+// ── The two sections ─────────────────────────────────────────────────────────
+// The split is on the Tagged Version FIELD, not on the Third Party Status of
+// the same name. They disagree on real tickets: on 9 Sep 2026 two UK tickets
+// carried status "Version Tagged" with the version field empty, so they appear
+// under "Awaiting Dev". That is what was asked for, and the Vendor Status
+// column is right there for anyone who wants to spot the mismatch.
+function vendorSections(issues) {
+  const tagged = [], awaiting = [];
+  for (const i of issues) (vendorVersionOf(i) ? tagged : awaiting).push(i);
+  tagged.sort((a, b) =>
+    compareVendorVersion(vendorVersionOf(a), vendorVersionOf(b)) || vendorUpdatedMs(a) - vendorUpdatedMs(b));
+  awaiting.sort((a, b) => vendorUpdatedMs(a) - vendorUpdatedMs(b));
+  return [
+    { key: 'tagged',   label: 'Version Tagged', items: tagged,
+      empty: 'Nothing has a tagged version yet.' },
+    { key: 'awaiting', label: 'Awaiting Dev',   items: awaiting,
+      empty: 'Nothing is waiting on dev without a version.' },
+  ];
+}
+
+// ── Fetch ────────────────────────────────────────────────────────────────────
+async function loadVendor(force) {
+  if (!force && vendorIssues && Date.now() - vendorFetchedAt < VENDOR_TTL) { renderVendor(); return; }
+  const epoch = projectEpoch;
+  vendorBusy = true; vendorError = '';
+  renderVendor();
+  try {
+    // Into a local, then the staleness check, then the global — trap 6.
+    const issues = await jiraSearch(vendorJql(), VENDOR_FIELDS);
+    if (projectStale(epoch)) return;
+    vendorIssues = issues;
+    vendorFetchedAt = Date.now();
+  } catch (err) {
+    if (!projectStale(epoch)) vendorError = err.message;
+  } finally {
+    if (!projectStale(epoch)) { vendorBusy = false; renderVendor(); }
+  }
+}
+function onVendorRefresh() { loadVendor(true); }
+
+// ── Render ───────────────────────────────────────────────────────────────────
+const VENDOR_THEAD = '<thead><tr><th>Key</th><th>Summary</th><th>Status</th>'
+                   + '<th>Vendor Status</th><th>Dev Reference</th><th>Dev Ticket URL</th>'
+                   + '<th>Tagged Version</th><th>Last Update Date</th></tr></thead>';
+
+// A colour per Third Party Status, with the usual grey fallback for a value
+// this build has not seen — the same defensive shape as STATUS_BG, and for the
+// same reason: the option list is Jira's to change, not ours.
+// Literals rather than tokens, matching STATUS_BG/STATUS_FG right above —
+// those are the palette's yellow-30/blue tints already in use on badges, and
+// keeping the same form means the two maps read as one system.
+const VENDOR_STATUS_COL = {
+  'Allocated to Dev': { bg: '#FFF1C2', fg: '#8B6420' },   // yellow-30 — with dev, no date
+  'Version Tagged':   { bg: '#E8F5F8', fg: '#00738A' },   // brand blue — a release exists
+  'Fix Deployed':     { bg: '#E0F3E2', fg: '#297A34' },   // green-40 / aa-green — shipped
+  'Duplicate':        { bg: '#F3F4F6', fg: '#374151' },   // grey — nothing to chase
+};
+function vendorStatusBadge(issue) {
+  const v = vendorStatusOf(issue);
+  if (!v) return '<span style="color:var(--grey-300)">—</span>';
+  const c = VENDOR_STATUS_COL[v] || { bg: '#F3F4F6', fg: '#374151' };
+  return badge(v, c.bg, c.fg, null, true);
+}
+
+// The URL is a free-text field, so it can hold anything — and anything is
+// exactly what must not become an href. Only http(s) is linked; anything else
+// is shown as text, so a `javascript:` value can never be one click away.
+// The address itself is never displayed (they are long vendor help-desk URLs);
+// the icon carries "Dev Ticket URL" as its title and accessible name.
+function vendorUrlCell(issue) {
+  const raw = vendorUrlOf(issue);
+  if (!raw) return '<span style="color:var(--grey-300)">—</span>';
+  if (!/^https?:\/\//i.test(raw)) {
+    return `<span class="vb-nolink" title="${esc(raw)}">not a link</span>`;
+  }
+  return `<a class="vb-link" href="${esc(raw)}" target="_blank" rel="noopener noreferrer"`
+       + ` title="Dev Ticket URL" aria-label="Dev Ticket URL">${ico('link', 13)}</a>`;
+}
+
+// Note the key is escaped INTO the href as well as into the link text. Jira
+// only ever issues keys shaped like TAC-1234, so this is belt-and-braces
+// rather than a live hole — but an attribute built by string concatenation is
+// worth closing where it is written rather than trusting the data source.
+function vendorRow(issue) {
+  const st = issue.fields?.status?.name || '—';
+  const ver = vendorVersionOf(issue);
+  const ref = vendorRefOf(issue);
+  return `<tr data-ticket="${esc(issue.key)}">
+    <td><a class="t-key" href="${esc(JIRA_BASE + '/' + issue.key)}" target="_blank" rel="noopener">${esc(issue.key)}</a></td>
+    <td class="t-sum">${esc(issue.fields?.summary || '—')}</td>
+    <td>${badge(st, sBg(st), sFg(st), null, true)}</td>
+    <td>${vendorStatusBadge(issue)}</td>
+    <td class="t-sm">${ref ? esc(ref) : '—'}</td>
+    <td>${vendorUrlCell(issue)}</td>
+    <td class="t-sm">${ver ? esc(ver) : '—'}</td>
+    <td class="t-sm">${fmtShortDateTime(issue.fields?.updated)}</td>
+  </tr>`;
+}
+
+function renderVendor() {
+  const el = document.getElementById('vendor-root');
+  if (!el) return;
+  el.innerHTML = `
+    ${personalBanner()}
+    <div class="priority-controls">
+      <span class="pc-label">Waiting on the vendor</span>
+      ${(personalMode && personalUser) ? `<span class="pm-chip">${ico('user',11)}Your tickets only</span>` : ''}
+      <button class="cl-btn" onclick="onVendorRefresh()"${vendorBusy ? ' disabled' : ''} title="Re-query Jira for vendor bugs">
+        <span>${vendorBusy ? 'Refreshing…' : 'Refresh'}</span>
+      </button>
+      <span class="priority-summary" id="vendor-summary"></span>
+    </div>
+    ${vendorError ? errorHtml(vendorError) : ''}
+    <div id="vendor-table"></div>`;
+  renderVendorTable();
+}
+
+function renderVendorTable() {
+  const table   = document.getElementById('vendor-table');
+  const summary = document.getElementById('vendor-summary');
+  if (!table) return;
+
+  if (!vendorIssues) {
+    table.innerHTML = vendorBusy
+      ? '<div class="loading-state"><div class="spinner"></div><span>Loading vendor bugs…</span></div>'
+      : (vendorError ? '' : '<div class="empty">No data loaded.</div>');
+    if (summary) summary.textContent = '';
+    return;
+  }
+
+  const shown = personalFilter(vendorIssues);
+  const [tagged, awaiting] = vendorSections(shown);
+  if (summary) {
+    summary.textContent = `${shown.length} ticket${shown.length !== 1 ? 's' : ''} with the vendor · `
+      + `${tagged.items.length} version tagged, ${awaiting.items.length} awaiting dev`
+      + (vendorFetchedAt ? ` · updated ${new Date(vendorFetchedAt).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', hour12:false})}` : '');
+  }
+
+  if (!shown.length) {
+    // Say WHICH reason it is empty. On the ANZ desk the answer is "that field
+    // is not used there at all" (0 tickets carry a Third Party Status of any
+    // value, checked 9 Sep 2026), which reads as broken unless it says so.
+    const who = (personalMode && personalUser) ? ' assigned to you' : '';
+    table.innerHTML = `<div class="empty">No tickets${who} are with the vendor on `
+      + `${esc(currentProject().name)}.<br>This list needs Third Party Status set to something `
+      + `other than “${esc(VENDOR_EXCLUDED_STATUS)}”.</div>`;
+    return;
+  }
+
+  // One table, two labelled sections, reusing the Priority list's tier-row
+  // heading so the two views read the same way. A section keeps its heading
+  // when empty: "Version Tagged (0)" is information, and a vanishing heading
+  // would make the remaining list look like the whole story.
+  const body = [tagged, awaiting].map(g => {
+    const head = `<tr class="tier-row"><td colspan="${VENDOR_COLS}">${esc(g.label)}`
+               + `<span class="drill-count">${g.items.length}</span></td></tr>`;
+    const rows = g.items.length
+      ? g.items.map(vendorRow).join('')
+      : `<tr><td colspan="${VENDOR_COLS}" class="t-sm" style="color:var(--fg-4)">${esc(g.empty)}</td></tr>`;
+    return head + rows;
+  }).join('');
+  table.innerHTML = `<div class="scroll-x"><table class="tbl">${VENDOR_THEAD}<tbody>${body}</tbody></table></div>`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3375,25 +3853,38 @@ function openAssigneeDrill(rowEl, name) {
 }
 
 async function loadLive() {
+  const epoch = projectEpoch;
   try {
     // Single logical pull of every open ticket (jiraSearch pages through the
     // connector's 100-per-call cap internally) — the Priority List tab sorts
     // this same in-memory array, so it never has to re-query Jira per tier.
-    RAW_ISSUES = await jiraSearch(
-      `project = TAC AND resolution = Unresolved AND ${TP_FILTER} ORDER BY updated DESC`,
+    // Into a local first, then the guard, then the global. Awaiting straight
+    // into RAW_ISSUES writes the array the moment the fetch resolves — before
+    // any check can run — so a desk switch mid-flight left the OLD desk's
+    // tickets in RAW_ISSUES under the new desk's header. The views looked
+    // right until the next recomputeViews() surfaced them. Caught in a browser
+    // by switching desks 200ms into a deliberately slowed fetch.
+    const open = await jiraSearch(
+      `project = ${projectKey} AND resolution = Unresolved AND ${TP_FILTER} ORDER BY updated DESC`,
       LIVE_FIELDS
     );
+    if (projectStale(epoch)) return;
+    RAW_ISSUES = open;
     recomputeViews();
     render(ALL_ISSUES);
     // Fetch today tickets for wallboard (sequential to avoid race condition)
-    const base=`project = TAC AND ${TP_FILTER}`;
+    const base=`project = ${projectKey} AND ${TP_FILTER}`;
     const todayFields=['summary','status','priority','issuetype','assignee','created'];
-    rawWbToday.created  = await jiraSearch(`${base} AND created  >= startOfDay() ORDER BY created  DESC`, todayFields);
-    rawWbToday.resolved = await jiraSearch(`${base} AND resolved >= startOfDay() ORDER BY resolved DESC`, todayFields);
+    const wbCreated  = await jiraSearch(`${base} AND created  >= startOfDay() ORDER BY created  DESC`, todayFields);
+    const wbResolved = await jiraSearch(`${base} AND resolved >= startOfDay() ORDER BY resolved DESC`, todayFields);
+    if (projectStale(epoch)) return;
+    rawWbToday.created  = wbCreated;
+    rawWbToday.resolved = wbResolved;
     recomputeViews();
     document.getElementById('ts').textContent='Updated '+new Date().toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'});
     renderWallboard();
   } catch(err) {
+    if (projectStale(epoch)) return;
     document.getElementById('root').innerHTML=errorHtml(err.message);
     document.getElementById('priority-root').innerHTML=errorHtml(err.message);
   }
@@ -3649,7 +4140,7 @@ function renderWallboard() {
     <div class="wb-head">
       <div class="wb-brand">
         <span class="wb-mark">${brandMark(30)}</span>
-        <span class="wb-title">Access4 UK TAC</span>
+        <span class="wb-title">${esc(currentProject().name)}</span>
         <span class="wb-badge">Live wallboard</span>
         ${(personalMode && personalUser) ? `<span class="wb-personal">${ico('user',12)}${esc(personalUser.name || 'Personal')} only</span>` : ''}
       </div>

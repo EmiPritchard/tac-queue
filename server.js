@@ -1,5 +1,9 @@
 /**
- * Access4 UK TAC — support queue dashboard, standalone web app.
+ * Access4 TAC — support queue dashboard, standalone web app.
+ *
+ * Serves both TAC service desks: the UK queue (project TAC) and the ANZ queue
+ * (project TAPC). Which desk is shown is a browser-side choice and every
+ * query carries its key; this process only decides which keys are ALLOWED.
  *
  * Why a server exists at all: a browser cannot call the Jira API directly
  * (CORS blocks it), and putting a Jira token in front-end code would hand it
@@ -23,7 +27,8 @@ const {
   ATLASSIAN_CLIENT_SECRET,
   APP_BASE_URL,
   SESSION_SECRET,
-  JIRA_PROJECT_KEY = 'TAC',
+  JIRA_PROJECT_KEYS,
+  JIRA_PROJECT_KEY,          // legacy single-desk name, still honoured below
   PORT = 3000,
   TRUST_PROXY = 'false',
 } = process.env;
@@ -40,6 +45,54 @@ if (missing.length) {
 if (SESSION_SECRET.length < 32) {
   console.error('SESSION_SECRET must be at least 32 characters. Generate one with:\n  openssl rand -hex 32');
   process.exit(1);
+}
+
+// ── The project pin ──────────────────────────────────────────────────────────
+// The dashboard switches between service desks (UK = TAC, ANZ = TAPC), so the
+// pin is a LIST rather than one key. Everything the browser can ask for is
+// checked against it: a modified front-end must not be able to read — or
+// count — issues in any other Jira project.
+//
+// Keys are validated against Jira's own key shape before use, because they
+// are interpolated into the RegExps below. A stray '(' or '.' arriving from
+// an env var would otherwise either crash at boot or, far worse, widen the
+// guard without anyone noticing.
+const PROJECT_KEY_RE = /^[A-Z][A-Z0-9_]{0,9}$/;
+const PROJECT_KEYS = String(JIRA_PROJECT_KEYS || JIRA_PROJECT_KEY || 'TAC,TAPC')
+  .split(',').map(k => k.trim().toUpperCase()).filter(Boolean);
+const badProjectKeys = PROJECT_KEYS.filter(k => !PROJECT_KEY_RE.test(k));
+if (!PROJECT_KEYS.length || badProjectKeys.length) {
+  console.error('Refusing to start. JIRA_PROJECT_KEYS must be a comma-separated list of Jira '
+    + 'project keys' + (badProjectKeys.length ? `; rejected: ${badProjectKeys.join(', ')}` : '') + '.');
+  process.exit(1);
+}
+// A .env written before the ANZ desk existed pins JIRA_PROJECT_KEY=TAC, which
+// silently blocks the other desk — the switcher would 403 on every query it
+// makes. Say so at boot rather than leaving it to look like a Jira permission
+// problem in the browser.
+if (!JIRA_PROJECT_KEYS && JIRA_PROJECT_KEY) {
+  console.warn(`[config] JIRA_PROJECT_KEY is deprecated. Using JIRA_PROJECT_KEYS=${PROJECT_KEYS.join(',')}`);
+  console.warn('[config] Only those desks will load. Set JIRA_PROJECT_KEYS=TAC,TAPC for both UK and ANZ.');
+}
+const PROJECT_KEYS_LABEL = PROJECT_KEYS.join(', ');
+
+// Built once, from validated keys. The trailing \b is what stops a prefix
+// match: with keys TAC and TAPC, `project = TACPC` matches neither, because
+// the character after the key has to be a non-word one.
+const JQL_PROJECT_RE = new RegExp(`project\\s*=\\s*(?:${PROJECT_KEYS.join('|')})\\b`, 'i');
+
+// ONE implementation, shared by /api/search and /api/count. This used to be a
+// copy-pasted RegExp per route, and the /api/count copy was written inside a
+// template literal WITHOUT escaping its backslashes — `\s` in a template
+// literal is just `s`, so that guard compiled to /projects*=s*TACb/ and could
+// never match anything. Every /api/count call 403'd, which the Closed list's
+// pager surfaces only as a missing "of N" label. Do not reintroduce a copy.
+function jqlProjectAllowed(jql) { return JQL_PROJECT_RE.test(jql); }
+function sendProjectPinError(res) {
+  return res.status(403).json({
+    error: 'project_not_allowed',
+    message: `Queries must target one of: ${PROJECT_KEYS_LABEL}.`,
+  });
 }
 
 const REDIRECT_URI = new URL('/oauth/callback', APP_BASE_URL).toString();
@@ -187,7 +240,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       email: me.email,
       name: me.name,
       siteUrl: req.session.siteUrl,
-      projectKey: JIRA_PROJECT_KEY,
+      projectKeys: PROJECT_KEYS,
     });
   } catch (e) {
     console.error('[me]', e.message);
@@ -196,15 +249,13 @@ app.get('/api/me', requireAuth, async (req, res) => {
 });
 
 /**
- * Narrow read-only JQL proxy. The project is pinned server-side so a modified
- * front-end cannot widen the query to other Jira projects.
+ * Narrow read-only JQL proxy. The projects are pinned server-side so a
+ * modified front-end cannot widen the query to other Jira projects.
  */
 app.post('/api/search', requireAuth, async (req, res) => {
   const { jql, fields, maxResults, nextPageToken } = req.body || {};
   if (typeof jql !== 'string' || !jql.trim()) return res.status(400).json({ error: 'jql_required' });
-  if (!new RegExp(`project\\s*=\\s*${JIRA_PROJECT_KEY}\\b`, 'i').test(jql)) {
-    return res.status(403).json({ error: 'project_not_allowed', message: `Queries must target project ${JIRA_PROJECT_KEY}.` });
-  }
+  if (!jqlProjectAllowed(jql)) return sendProjectPinError(res);
   const body = {
     jql,
     maxResults: Math.min(Number(maxResults) || 100, 100),
@@ -255,9 +306,7 @@ app.post('/api/count', requireAuth, async (req, res) => {
   if (typeof jql !== 'string' || !jql.trim()) return res.status(400).json({ error: 'jql_required' });
   // Same project pin as /api/search — a modified front-end must not be able to
   // probe how many issues exist in other projects either.
-  if (!new RegExp(`project\s*=\s*${JIRA_PROJECT_KEY}\b`, 'i').test(jql)) {
-    return res.status(403).json({ error: 'project_not_allowed', message: `Queries must target project ${JIRA_PROJECT_KEY}.` });
-  }
+  if (!jqlProjectAllowed(jql)) return sendProjectPinError(res);
   try {
     const r = await fetch(`https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/search/approximate-count`, {
       method: 'POST',
@@ -291,10 +340,11 @@ app.post('/api/count', requireAuth, async (req, res) => {
 // dedicated endpoint. The split mirrors /api/search + jiraSearch(): the server
 // stays a thin proxy and the browser does the paging.
 //
-// The project pin here is a key-shape check rather than a JQL check. Note it
-// blocks the OTHER projects that show up as linked issues (ESD, DEVX, ...):
-// the timeline is for TAC tickets, and those keys already link out to Jira.
-const ISSUE_KEY_RE = new RegExp(`^${JIRA_PROJECT_KEY}-\\d{1,10}$`, 'i');
+// The project pin here is a key-shape check rather than a JQL check, over
+// the same PROJECT_KEYS list. Note it blocks the OTHER projects that show up
+// as linked issues (ESD, DEVX, ...): the timeline is for TAC tickets, and
+// those keys already link out to Jira.
+const ISSUE_KEY_RE = new RegExp(`^(?:${PROJECT_KEYS.join('|')})-\\d{1,10}$`, 'i');
 
 // Everything the timeline reads. Wider than the list queries because it is one
 // issue, not a page of them — so page-shrinking does not apply. The three
@@ -334,7 +384,7 @@ async function jiraGet(req, res, path, label) {
 app.get('/api/issue/:key', requireAuth, async (req, res) => {
   const key = String(req.params.key || '');
   if (!ISSUE_KEY_RE.test(key)) {
-    return res.status(403).json({ error: 'issue_not_allowed', message: `Only ${JIRA_PROJECT_KEY} issues can be read.` });
+    return res.status(403).json({ error: 'issue_not_allowed', message: `Only ${PROJECT_KEYS_LABEL} issues can be read.` });
   }
   await jiraGet(req, res,
     `issue/${encodeURIComponent(key)}?expand=changelog&fields=${DETAIL_FIELDS}`, 'issue');
@@ -343,7 +393,7 @@ app.get('/api/issue/:key', requireAuth, async (req, res) => {
 app.get('/api/issue/:key/changelog', requireAuth, async (req, res) => {
   const key = String(req.params.key || '');
   if (!ISSUE_KEY_RE.test(key)) {
-    return res.status(403).json({ error: 'issue_not_allowed', message: `Only ${JIRA_PROJECT_KEY} issues can be read.` });
+    return res.status(403).json({ error: 'issue_not_allowed', message: `Only ${PROJECT_KEYS_LABEL} issues can be read.` });
   }
   const startAt = Math.max(0, Number(req.query.startAt) || 0);
   await jiraGet(req, res,

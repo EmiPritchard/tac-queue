@@ -1,7 +1,7 @@
 {
   "name": "tac-support-queue",
   "version": "1.0.0",
-  "description": "Access4 UK TAC support queue dashboard",
+  "description": "Access4 TAC support queue dashboard (UK and ANZ service desks)",
   "main": "server.js",
   "scripts": {
     "start": "node --use-system-ca --env-file-if-exists=.env server.js",

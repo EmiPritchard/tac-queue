@@ -1,10 +1,15 @@
-# Access4 UK TAC — Support Queue Dashboard
+# Access4 TAC — Support Queue Dashboard
 
 The TAC support queue dashboard as a standalone website. Viewers sign in with
 their **Atlassian account** — no Claude account required.
 
 Same dashboard as before: Live queue, Priority list (the 11-tier triage
-ordering), Historical, Wallboard, and Personal mode.
+ordering), Closed, Vendor Bugs, Historical, Wallboard, and Personal mode.
+
+It covers **both TAC service desks** — UK (Jira project `TAC`) and ANZ
+(`TAPC`) — and the picker in the top-left switches between them. One desk is
+shown at a time and every view is scoped to it; a fresh load always opens the
+UK desk.
 
 > **Picking this up cold?** Read `CLAUDE.md` first. It documents the Jira
 > field IDs, three JQL behaviours that fail silently, the full priority-tier
@@ -25,8 +30,10 @@ every Jira call runs **as that person**. Consequences worth understanding:
   may read — unlike the Claude artifact version, where it was only a
   client-side convenience filter.
 
-Viewers need permission to browse **Service Desk – UK TAC**. If your Jira admin
-hasn't granted their account that, this app cannot grant it either.
+Viewers need permission to browse **Service Desk – UK TAC** and, for the
+other half of the switcher, **Service Desk – ANZ TAC**. If your Jira admin
+hasn't granted their account that, this app cannot grant it either — a desk
+they cannot browse simply comes back empty.
 
 ## Requirements
 
@@ -131,7 +138,7 @@ for `express-session`). Fine as-is for a single instance.
 | `APP_BASE_URL` | yes | Public URL, no trailing slash. The OAuth callback is derived from it |
 | `SESSION_SECRET` | yes | 32+ random chars. Changing it signs everyone out |
 | `ATLASSIAN_SITE_URL` | no | Pin the site when an account can reach several |
-| `JIRA_PROJECT_KEY` | no | Project the proxy may query (default `TAC`) |
+| `JIRA_PROJECT_KEYS` | no | Comma-separated projects the proxy may query (default `TAC,TAPC` — UK and ANZ). The legacy singular `JIRA_PROJECT_KEY` is still read when this is unset, but pinning one key hides the other desk |
 | `PORT` | no | Default 3000 |
 | `TRUST_PROXY` | no | `true` behind a TLS-terminating proxy |
 
@@ -170,11 +177,12 @@ non-fatal; the Closed list falls back to "more available".
 
 The two `/api/issue` routes exist for the ticket timeline, which needs the
 Jira changelog — something no list query returns. They pin the project by key
-shape (`TAC-<digits>`), which also means they refuse the other projects that
-turn up as linked issues (ESD, DEVX); those keys link out to Jira instead.
+shape (`TAC-<digits>` or `TAPC-<digits>`), which also means they refuse the
+other projects that turn up as linked issues (ESD, DEVX); those keys link out
+to Jira instead.
 
-`/api/search` and `/api/count` refuse any JQL that doesn't target
-`JIRA_PROJECT_KEY`. Treat that
+`/api/search` and `/api/count` refuse any JQL that doesn't target one of
+`JIRA_PROJECT_KEYS`. Treat that
 as tidiness rather than a security boundary — the real limit is the viewer's own
 Jira permissions, since queries run under their token.
 
