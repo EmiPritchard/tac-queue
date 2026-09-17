@@ -1012,6 +1012,33 @@ The ticket key links to Jira, where they live.
 Atlassian account and queries run as them, so Jira's permission scheme is the
 access control and there's no shared token to leak.
 
+### Forcing an SLA rebuild — asked 17 Sep 2026, deferred
+
+Wanted: a button to reconstruct a ticket's SLA from the dashboard, per
+[Atlassian's KB on wrong or missing SLAs](https://support.atlassian.com/jira/kb/resolve-wrong-or-missing-slas-in-jira-service-management-cloud/).
+**Not built**, and the reason is structural rather than effort:
+
+- The KB's forceful route is
+  `POST /rest/servicedesk/1/servicedesk/sla/admin/task/destructive/reconstruct?force=false`
+  with a JSON array of issue keys. It **deletes all existing SLA data for those
+  issues and is not reversible**, needs Jira admin, and the KB authenticates it
+  with Basic auth (account email + API token).
+- `/rest/servicedesk/1/…` is an internal UI endpoint, not one of the paths the
+  `api.atlassian.com` OAuth gateway proxies (`/rest/api/3`, `/rest/servicedeskapi`,
+  `/rest/agile`), and a 3LO access token is only valid *at* that gateway — not
+  against `access4.atlassian.net` directly. **So this call cannot ride on the
+  per-viewer OAuth this app is built on.** It would need a stored Jira-admin
+  API token on the server, which is the one thing section 8's first decision
+  rules out, and it would let any dashboard viewer irreversibly wipe SLA data
+  as that admin.
+- The KB's *non-destructive* route needs no API at all: a **"Recalculate SLAs"
+  button in the SLA panel** on the issue itself, pressed by an admin. A
+  dashboard can at most find the suspect tickets and link to them.
+
+If it comes back, the question to settle first is the credential, not the code:
+a shared admin token (and who may press the button), or detection plus a
+deep-link to Jira's own button.
+
 ### Personal mode, removed 17 Sep 2026
 
 It filtered every view to the tickets **assigned to** the signed-in person, via
