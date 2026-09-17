@@ -21,23 +21,31 @@ UK queue (Jira project `TAC`) and the ANZ queue (`TAPC`) — added 8 Sep 2026,
 see "The desk switcher" in section 8. Everything below applies to whichever
 desk is selected; where the two differ, it says so.
 
-Six views. The Live queue, Priority list and Wallboard all read one shared
+Seven views. The Live queue, Priority list and Wallboard all read one shared
 fetch of open tickets; **Closed, Historical and Vendor Bugs each run their own
-query** (sections 5, 6 and the Historical notes).
+query** (sections 5, 6 and the Historical notes). The Live queue has **one
+extra query of its own** — the Reopened tile, whose tickets are by definition
+absent from that shared fetch (section 5a). **SLA Breakdown adds no query at
+all**: it is the Closed list's data, its cache and its arithmetic, presented
+as a per-assignee matrix (section 5b).
 
 | View | What it shows |
 |---|---|
-| Live queue | Summary tiles, status/priority/type charts, assignee load, drill-downs |
+| Live queue | Summary tiles (including Reopened, section 5a), status/priority/type charts, assignee load, drill-downs |
 | Priority list | All open tickets in an 11-tier triage order (section 4) |
 | Closed | Closed/resolved tickets in a chosen date window, newest close first (section 5) |
 | Vendor Bugs | Tickets the vendor has taken on, split into Version Tagged and Awaiting Dev (section 6) |
 | Historical | Week-by-week created/resolved, SLA attainment, CSAT |
+| SLA Breakdown | The Closed tab's SLA summary as a matrix, one row per assignee (section 5b) |
 | Wallboard | Full-screen KPI view for a TV |
 
 Clicking any ticket row in any of those lists opens a **history timeline**
 for that ticket (section 7) — a modal, not a tab.
 
-Plus **Personal mode**, which filters every view to the signed-in user.
+**Personal mode was removed on 17 Sep 2026** (section 8). Nothing filters a
+view to the signed-in person any more: access is Jira's own permission scheme,
+and the Priority list and Closed tab each keep an assignee picker for "just
+mine".
 
 The wallboard is the one view with no picker — the header is hidden there — so
 a TV is switched by choosing the desk before going full-screen. Its title
@@ -199,11 +207,13 @@ membership, so an unseen 4th value or a null wouldn't be silently dropped).
   status: TAC-6188, TAC-6214, TAC-6152, TAC-6031, TAC-5990, TAC-5440,
   TAC-5400. Keying the Closed list off the resolution date would list those as
   closed while they are actively being worked.
-- **Those same seven are in NO view at all today.** The live queue's JQL says
-  `resolution = Unresolved`, which excludes them, and the Closed list excludes
-  them too. Pre-existing live-queue gap, not one the Closed list introduced.
-  The fix would be `statusCategory != Done` in `loadLive()`; deliberately not
-  done in the same change, since it moves tickets into the triage view.
+- **Those same seven used to be in NO view at all** — the live queue's JQL
+  says `resolution = Unresolved`, which excludes them, and the Closed list
+  excludes them too. The **Reopened tile** (14 Sep 2026, section 5a) is where
+  they surface now. It does not put them back into the triage view: they are
+  still absent from `RAW_ISSUES`, so no tier, chart or assignee count moves.
+  Note the set is not static — it was 7 on 4 Sep 2026 and is **3 on the UK
+  desk / 35 on ANZ** as of 14 Sep 2026.
 - **Volumes are wildly uneven because of the HubSpot→Jira migration.** 5,451
   tickets are Done in total, and **5,225 of them closed in Apr–Jun 2026**
   (5,038 in May alone) as a bulk-close carrying resolutions named "Historical
@@ -216,6 +226,16 @@ membership, so an unseen 4th value or a null wouldn't be silently dropped).
   mattering silently if the Third Party Status values changed.
 - Every issue that is `statusCategory = Done` has a resolution date (0
   exceptions), so `ORDER BY resolved DESC` never drops or mis-sorts one.
+- **`everBreached()` is the JQL that answers the same question
+  `closedSlaState()` does**, and it is how the app's SLA arithmetic can be
+  checked without trusting the app: `cf[10879] = everBreached()` counts
+  tickets whose Triage clock was ever missed, completed cycles included.
+  (`breached()` is the live-queue question instead — see trap 2.) Over the 43
+  tickets closed in the 7 days to 14 Sep 2026 it gives Triage 7, First
+  Response 6, Response Target 8, Resolution 4, which is exactly what the
+  dashboard reports as 84% / 86% / 81% / 91% met. Use it as the second source
+  whenever an SLA percentage is in doubt — remember trap 1 and reference the
+  SLA fields as `cf[NNNNN]`, never by name.
 
 **The third-party filter** (`TP_FILTER` in the code) excludes tickets parked
 with a third party in a state the TAC team can't act on:
@@ -284,8 +304,8 @@ if (projectStale(epoch)) return;      // too late: the write already happened
 check can run. Switch desk 200ms into a slow fetch and the old desk's tickets
 sit in `RAW_ISSUES` under the new desk's header; the screen still looks right
 because `ALL_ISSUES` was rebuilt by the newer load, and the wrong data only
-surfaces at the *next* `recomputeViews()` — a personal-mode toggle, or the
-5-minute auto-refresh. Found in a browser on 8 Sep 2026 by doing exactly that.
+surfaces at the *next* `recomputeViews()` — in practice the 5-minute
+auto-refresh (the Personal mode toggle used to be the fast way to see it). Found in a browser on 8 Sep 2026 by doing exactly that.
 Every loader now awaits into a local, checks, and only then assigns. Any new
 fetch must do the same.
 
@@ -564,8 +584,9 @@ minutes (`CLOSED_TTL_PAST`), since only a resolution-date edit could change
 them. At most `CLOSED_CACHE_MAX` (4) ranges are retained, LRU-evicted — Last
 Quarter alone can hold thousands of issues with their SLA payloads. Nothing is
 persisted to `localStorage`: a stale closed list read off disk on the next
-visit would be worse than a slow fresh one. `Refresh` drops the current range's
-entry and re-queries.
+visit would be worse than a slow fresh one. The header's **Refresh** (section
+8) drops the current range's entry and re-queries — it used to be a button in
+this tab's own controls row, and moved to the header on 17 Sep 2026.
 
 **The KPI summary strip (added 4 Sep 2026).** A "Show summary" tickbox in the
 Closed tab's controls reveals six read-only tiles above the table: **Total
@@ -575,8 +596,8 @@ closed**, **SLA Total**, then attainment for `SLA Triage`,
 other toggles.
 
 Every tile summarises **exactly the rows the filters are showing** — the same
-`shown` array the table renders — so personal mode, the assignee picker and
-the TAC Tier filter all feed into them.
+`shown` array the table renders — so the assignee picker and the TAC Tier
+filter both feed into them.
 
 **Only `SLA Total` follows the SLA multi-select; the four named tiles do
 not.** That split is deliberate and is the thing most likely to be mistaken for
@@ -667,6 +688,168 @@ ticket that is already closed.
 `search/approximate-count` and is treated as non-fatal — on failure the pager
 says "the rest" instead of a number and everything else still works.
 
+## 5a. The Reopened tile
+
+Added 14 Sep 2026. A sixth tile on the **Live queue**'s top row: tickets that
+were resolved and then pushed back into a live status. Clicking it drills into
+the list, like every other tile.
+
+**It is the Live queue's only second query, and it has to be.** The rule —
+status is not a finished one, yet a resolution is set — is the exact
+complement of `loadLive()`'s `resolution = Unresolved`, so not one of these
+tickets can ever be in `RAW_ISSUES`. Same blind spot the Closed list leaves
+from the other side (section 2); this tile is what closes it.
+
+```
+project = <desk> AND statusCategory != Done AND resolution is not EMPTY
+  AND <TP_FILTER> ORDER BY updated DESC
+```
+
+**`statusCategory != Done`, not `status not in (Closed, Resolved)`.** The
+business stated the rule in those two names, and today the two forms are the
+same query — both return 3 on UK and 35 on ANZ (checked against the live
+instance 14 Sep 2026, with and without `TP_FILTER`, which excludes none of
+them). `statusCategory` is Jira's own project-independent answer to "is this
+finished", so a renamed or newly added done status cannot silently start
+counting as reopened — the same reasoning as `isLinkDone()` in section 4. If
+the business ever wants literally those two names, that one clause is the
+edit.
+
+**`TP_FILTER` is applied**, for consistency with every other live-queue query.
+It excludes none of these tickets on either desk today, and a ticket the
+vendor has taken on has its own tab.
+
+**The tile does not change anything else on the tab.** These tickets are added
+to no chart, no assignee count and no tier: the fetch lands in its own array
+(`rawReopened` / `reopenedIssues`), never in `RAW_ISSUES`. Moving them into
+the triage view is a business question nobody has answered — see the
+`loadLive()` note in section 2 — and this tile deliberately does not answer it.
+
+**It is fetched before the first paint, and a failure is non-fatal.** The
+query runs after the open pull and before `render()`, so the tile is right the
+first time rather than appearing a beat later; but it is wrapped in its own
+`try`, so a failure leaves the whole rest of the tab working and the tile
+reading "— Count unavailable". In that state it is **not clickable** — an
+empty drill would read as "none", which is a different claim from "not known".
+Both awaits are guarded by `projectEpoch` (trap 6): a desk switch during the
+open pull returns before this query is even sent.
+
+The drill is the only entry in `DRILLS` with a `source`, because it is the
+only one not reading `ALL_ISSUES`.
+
+## 5b. The SLA Breakdown tab
+
+Added 14 Sep 2026. The Closed tab's KPI summary strip, broken down by
+assignee: one row per person, one column per SLA, over the same 13 date
+ranges. The tab sits between Historical and Wallboard.
+
+**It adds no new Jira query, no new cache and no new arithmetic.** It calls
+`closedJql()` over `CLOSED_FIELDS`, stores into the same `closedCache`, and
+computes every figure with `closedSlaAttainment()` (the four named SLAs) and
+`closedSlaTotal()` (the aggregate) — the same two functions behind the Closed
+tab's tiles. That is the point rather than an economy: a matrix that
+disagreed with the strip it breaks down would be worse than no matrix, and
+calling the same code is the only way to guarantee it cannot. Opening this tab
+on a range the Closed tab has already loaded costs nothing at all, and paging
+on either tab lengthens the list on both.
+
+**What is not shared is the range on screen, `slaBusy`/`slaError` and the
+"ever loaded" latch**, because the two tabs are read independently — hence
+`loadSla()` / `loadMoreSla()` mirroring their Closed-tab counterparts rather
+than calling them. `loadClosed()`'s staleness guard tests `closedRange`, so
+reusing it would silently drop every result fetched for a different range.
+
+**The TAC Tier filter and the SLA multi-select ARE shared state**
+(`closedTacTiers` / `selectedClosedSlas`). Both decide what a number labelled
+"SLA Total" means, and two tabs quietly answering that differently is exactly
+the silent disagreement this file keeps warning about. As on the Closed tab,
+**the SLA picker scopes only the SLA Total column** — the four named columns
+report specific clocks, so letting the picker blank one out would make a named
+column lie. There is no assignee picker: the matrix *is* the breakdown.
+
+**Columns:** Assignee, Closed, SLA Total, then `CLOSED_KPI_SLAS` — Triage,
+First Response, Response, Resolution. Every cell carries its denominator
+underneath ("12 of 16 met"), because the per-SLA denominators are uneven by
+nature (section 5) and a bare percentage hides that. A cell with no cycle for
+that SLA reads as an em dash, never 0%.
+
+**Rows are ordered busiest-first**, ties alphabetical, `Unassigned` always
+last. Deliberately not ordered by attainment: volume ordering is stable
+between loads and does not turn the table into a ranking of people. The
+bottom row is `All assignees` — the same two calls over the whole shown set,
+so the footer cannot drift from the rows above it, and it is what you compare
+against the Closed tab's strip.
+
+**A partial load is disclosed twice** — in the summary line and again in the
+pager note ("Every percentage below is over what is loaded, not the whole
+range"), because a column of percentages computed from the most recent 100
+rows is more misleading than a short list is. The pager itself is shared:
+`closedPagerHtml()` takes the tab's own loader name and busy flag.
+
+**Every figure in the matrix opens the tickets behind it** (added 17 Sep
+2026). Click any cell — the Closed count, SLA Total, or a named SLA — and a
+panel drops in under the table listing exactly the tickets that figure counted,
+with the ones that **missed the SLA tinted red** (`.row-breach`, the same tint
+the Closed tab uses). Clicking the open cell again closes it; the open cell
+keeps a tint and a left bar so it is obvious which number the panel belongs to.
+
+**The drill lists the cell's own denominator, not "everything".** That is what
+makes it checkable: a named SLA cell reading "4 of 7 met" opens exactly 7 rows
+with 3 red. Tickets carrying no cycle for that clock are excluded — as they are
+from the percentage — and the panel's note says how many, so the drill cannot
+quietly under-report the row. `SLA Total` and `Closed` open the whole row and
+both use the same red test (missed **any** selected SLA), so the two can never
+disagree about which rows are red.
+
+**Which means the SLA picker moves the SLA Total drill and not a named one** —
+the same split the tiles have, now visible in the ticket list rather than only
+in a percentage. Measured on the 30 tickets closed in the week to 8 Sep 2026:
+14 red with four clocks selected, 7 with one.
+
+Rows are **breached first, then newest close first**. The drill exists to
+interrogate a percentage, and the misses are what anyone is looking for; the
+Closed tab's own order applies within each group. Rows carry `data-ticket`, so
+a click still opens the ticket timeline.
+
+**The cell hover and the open-cell tint must out-rank the table's row hover**,
+and repeat themselves under it — the same trap `.row-breach` carries in
+section 5, and this feature shipped with it. `.sla-cell:hover` (0,2,0) loses to
+`.tbl tbody tr:hover td` (0,2,3) and to `.tbl tbody tr.sla-row-all:hover td`
+(0,4,3), so pointing at a figure painted exactly the grey the row was already
+painting: reported the same day as "the hover colour is the same as the
+background colour". Both states are now written four ways — bare, under a
+hovered row, on the totals row, and on a hovered totals row — and the tints are
+brand blues (`--primary-30` hover, `--primary-40` open) rather than another
+grey, so a cell reads apart from the white rows, from the row hover's
+`--grey-50`, and from each other. The test suite pins all eight selectors and
+refuses a bare `.sla-cell:hover`.
+
+`slaDrill` is `{row, col}` — the row an assignee name or `SLA_ALL_ROW`, the col
+`'closed'`, `'total'` or an SLA field id — and it is **re-resolved from current
+data on every render**, never remembered. A Load more, a tier change or a
+refresh recomputes it; if the row has gone (a tier filter can remove a person)
+the panel closes itself rather than showing a list belonging to nothing on
+screen. Changing the date range clears it outright: a different window is a
+different set of tickets.
+
+**`jsAttr()` exists because of this feature.** The row key in each cell's
+`onclick` is an assignee's display name, and `onclick="toggleSlaDrill('O'Brien')"`
+is a syntax error — one apostrophe would break a row silently. It
+`JSON.stringify`s for JavaScript then `esc()`s for the attribute; the browser
+undoes the second before the first. Use it for any handler argument that
+carries data rather than a constant.
+
+Live figures for the 7 days to 14 Sep 2026 (43 tickets, 6 assignees), which
+double as the numbers to expect when checking the tab still works:
+
+| | Closed | SLA Total | Triage | First Resp | Response | Resolution |
+|---|---|---|---|---|---|---|
+| All assignees | 43 | 65% | 84% | 86% | 81% | 91% |
+
+Per-person the spread is wide — 100% across the board on 13 tickets at one
+end, 0% SLA Total on 1 ticket at the other — which is the whole reason the
+breakdown was asked for.
+
 ## 6. Vendor Bugs
 
 Added 9 Sep 2026. Tickets the upstream vendor has actually taken on: **Third
@@ -739,15 +922,15 @@ this is the one place in the app that turns a user-supplied string into an
 `TAC-1234`-shaped keys, so that one is belt-and-braces.
 
 **Cache:** one array with a 2-minute TTL (`VENDOR_TTL`), the same figure the
-Closed list uses for ranges that include today, plus a `Refresh` button that
-forces a re-query. No keyed cache and no pager: it is a single query with
+Closed list uses for ranges that include today, plus the header's **Refresh**
+(section 8), which forces a re-query. That button lived in this tab's controls
+row until 17 Sep 2026. No keyed cache and no pager: it is a single query with
 nothing to vary it, and 27 rows arrive in one page. Nothing is persisted, and a
 desk switch clears it like every other cache.
 
-**Personal mode applies**, as it does to every view, and the empty state says
-"assigned to you" when it is the reason nothing shows. There is deliberately no
-assignee picker: it was not asked for, and at this size the whole list fits on
-one screen.
+**There is deliberately no assignee picker**: it was not asked for, and at
+this size the whole list fits on one screen. (Until 17 Sep 2026 Personal mode
+could scope this tab to the viewer; that is gone with it.)
 
 **Rows open the ticket timeline** through the same delegated listener as
 everywhere else (`data-ticket`), and clicks on the two links inside a row — the
@@ -827,23 +1010,40 @@ The ticket key links to Jira, where they live.
 
 **OAuth per viewer, not a service account.** Each user signs in with their own
 Atlassian account and queries run as them, so Jira's permission scheme is the
-access control and there's no shared token to leak. This also makes Personal
-mode a real boundary rather than a cosmetic filter.
+access control and there's no shared token to leak.
 
-**Personal mode matches on `account_id`, not email.** Account IDs survive
-display-name changes and aren't affected by the Atlassian privacy setting that
-hides `emailAddress` from the API — email matching fails silently for users who
-have it enabled. Email and display name remain as fallbacks. Verified: 11 of 56
-open tickets matched, all on the accountId path.
+### Personal mode, removed 17 Sep 2026
 
-**Personal mode re-runs the tiering on the filtered set**, so a person's list is
-their own queue numbered from 1, rather than global ranks with gaps.
+It filtered every view to the tickets **assigned to** the signed-in person, via
+a header toggle. Gone at the business's direction, on the reasoning that per-
+viewer OAuth already governs access.
+
+**Worth being precise about, because the two are easy to conflate:** OAuth
+decides what a viewer *may read*, and Personal mode decided what they *were
+shown of it* — assignment, not permission. So the capability that actually
+went away is "show me only my tickets", not any part of the access model. The
+Priority list and the Closed tab both keep an assignee picker, and the SLA
+Breakdown is per-assignee by construction, so the gap is the Vendor Bugs tab
+and the Wallboard, neither of which can now be narrowed to one person.
+
+What went with it: the header toggle, the per-view banner and "Your tickets
+only" chips, the wallboard badge, `matchesViewer()` / `personalFilter()`, and
+the app's **only** `localStorage` key (`a4tac_personal`). A browser that still
+holds that key is harmless — nothing reads it.
+
+What stayed: `loadIdentity()` and `/api/me`, because `JIRA_BASE` (every
+ticket's browse link) comes out of that call and it doubles as the session
+probe. It no longer keeps the viewer's name or account id.
+
+**`RAW_ISSUES` / `ALL_ISSUES` and `recomputeViews()` stayed too**, now a
+straight hand-off rather than a filter. Collapsing the two names would touch
+every renderer for no behaviour change, and `recomputeViews()` is still the one
+place a loader publishes what the renderers read. If a filter ever returns,
+that is where it goes.
 
 **One fetch, filter in the browser.** All views derive from a single paginated
-pull of open tickets (`RAW_ISSUES`). Personal mode and the assignee picker are
-array filters over it — no extra Jira calls. `RAW_ISSUES` is the raw fetch and
-`ALL_ISSUES` is the filtered view; `recomputeViews()` derives the second from
-the first. Keep that split: renderers read the view arrays.
+pull of open tickets (`RAW_ISSUES`). The assignee pickers are array filters
+over it — no extra Jira calls.
 
 **Pagination is mandatory.** An earlier version fetched `maxResults: 100` with
 no pagination, silently losing tickets past the 100th. `jiraSearch()` follows
@@ -860,9 +1060,42 @@ short of `maxResults`: Jira shrinks them when many fields are requested, and
 `LIVE_FIELDS` asks for 13 — so "I got fewer than I asked for" is *not* evidence
 that you have reached the end.
 
-**The wallboard shows a badge when Personal mode is on**, because a shared TV
-quietly displaying one person's numbers as the team's would be actively
-misleading.
+### One Refresh, in the header (moved there 17 Sep 2026)
+
+**Refresh sits next to Auto-refresh and re-queries whatever tab is on
+screen.** It replaces the three per-tab buttons that used to live in the
+Closed, SLA Breakdown and Vendor Bugs controls rows; the Live queue, Priority
+list and Historical never had one at all, so those three views could only be
+refreshed by reloading the page. A control that is always visible is only
+coherent if it always means something, hence the dispatch.
+
+`REFRESH_BY_TAB` maps each tab key to `{ what, run }`. Two things about it:
+
+- **Every key in `TAB_LABELS` must have an entry.** A missing one falls back
+  to the live queue, which would look like the button silently doing nothing
+  on the tab you are actually watching. There is an assertion for exactly this,
+  so adding a tab without a refresh job fails the suite rather than shipping.
+- **The three cached tabs pass `force = true`.** Without it, Closed / SLA /
+  Vendor would hit their own TTL and the button would no-op for two minutes —
+  the one situation where a user presses Refresh hardest.
+
+**It refreshes one view, not all of them**, and `what` names that view in the
+tooltip ("Re-query Jira for the Closed list"). Re-querying five views because
+somebody wanted today's closed list again would be several seconds of Jira for
+data nobody is looking at. The consequence to know: refreshing on the Closed
+tab does **not** freshen the live queue, so the "Updated …" timestamp in the
+header — which only `loadLive()` writes — legitimately stays put.
+
+**Being in the header puts it out of reach of trap 5.** The tab renderers
+replace their own controls row and nothing else, so this button can never be
+destroyed mid-click. A click with a multi-select panel open both closes the
+panel (the document listener) and fires the refresh — which is what the old
+in-row button had to be explicitly tested for, and is now structural.
+
+Busy state is the disabled attribute plus a "Refreshing…" label, restored in a
+`finally` so a failed query cannot leave the button stuck. It deliberately does
+**not** borrow auto-refresh's `.is-on` teal: the two buttons sit side by side,
+and that colour means "armed", not "working".
 
 ### The desk switcher (added 8 Sep 2026)
 
@@ -888,9 +1121,9 @@ note the server pin matches `project = <key>` and would need widening too.
 
 **The choice is NOT persisted.** Every fresh load opens the UK desk. Asked and
 chosen 8 Sep 2026: a wallboard TV and a shared link then always start from the
-same place, and nobody inherits yesterday's desk without noticing. (Personal
-mode *is* persisted — that is an identity, not a place.) The switch lasts the
-session.
+same place, and nobody inherits yesterday's desk without noticing. The switch
+lasts the session. Since Personal mode went, this app writes nothing to
+`localStorage` at all.
 
 **A switch throws away every cache.** The live array, the wallboard's today
 counts, the historical weeks, the Closed list's per-range cache and the
@@ -898,9 +1131,9 @@ ticket-timeline cache are all scoped to one project, so `switchProject()`
 clears all of them rather than keying five caches by desk. Nobody flips desk
 in a loop, and a row left over from the other desk opens a timeline the
 server's key guard is entitled to refuse. The open timeline modal is closed
-for the same reason. Kept across a switch: Personal mode, auto-refresh, which
-tab you are on, and the tier/SLA pickers (both desks use the same tiers and
-the same six clocks). Reset: the two assignee pickers, since the desks are
+for the same reason. Kept across a switch: auto-refresh, which tab you are on,
+and the tier/SLA pickers (both desks use the same tiers and the same six
+clocks). Reset: the two assignee pickers, since the desks are
 staffed by different people and a name from one filters the other to nothing.
 
 **In-flight fetches are dropped by `projectEpoch`**, bumped on every switch;
@@ -927,8 +1160,9 @@ Verified: server boots; refuses to start on missing/short config; both API
 routes return 401 when signed out; mismatched OAuth `state` is rejected; the
 dashboard shell is never served to anonymous visitors; the project guard allows
 real queries and blocks other projects including the near-miss `TACPC`; the
-tier logic partitions live data with no overlaps or gaps (56 in, 56 out); the
-Personal-mode match returns the right 11 tickets.
+tier logic partitions live data with no overlaps or gaps (56 in, 56 out).
+(An earlier line here recorded Personal mode matching the right 11 tickets;
+that feature was removed on 17 Sep 2026.)
 
 **The OAuth round-trip now works** (28 Aug 2026), but only with
 `--use-system-ca`. The Access4 network re-signs TLS, and Node ignores the
@@ -1232,9 +1466,11 @@ DOM rather than by eye. Still no Jira OAuth session.
   live summary line, versions render in the asserted order, 25 icon links carry
   `title`/`aria-label` "Dev Ticket URL" with the address never shown, a click
   on a row opens the timeline while clicks on the key link and the URL icon do
-  not, personal mode empties the list with the "assigned to you" wording,
+  not, personal mode empties the list with the "assigned to you" wording (that
+  behaviour is gone — Personal mode was removed 17 Sep 2026),
   switching to ANZ mid-tab re-queries and shows the desk-named empty state,
-  Refresh re-queries, and switching back restores 9/18.
+  the tab's own Refresh button re-queried (that button has since moved to the
+  header — see section 8), and switching back restores 9/18.
 - The **vendor JQL the real page sent was captured and fed through the real
   server-side project pin** (extracted from `server.js`) — accepted for both
   desks.
@@ -1242,6 +1478,217 @@ DOM rather than by eye. Still no Jira OAuth session.
 **Untested:** a vendor bug that is closed (none exist), a Third Party Status
 value outside the five current options (covered by synthetic input only), and
 whether ANZ ever starts using the field.
+
+**Session of 14 Sep 2026 — the Reopened tile.** Same technique as the last
+two sessions: the real `views/index.html` served by a stub of the API routes
+and driven in a browser, plus the shipped functions run in a Node harness.
+Still no Jira OAuth session, so the app's own proxy path remains unexercised.
+
+- **The rule was settled against live Jira before any code was written.** Both
+  forms of "not finished" (`statusCategory != Done` and
+  `status not in (Closed, Resolved)`) return the same rows on both desks — UK
+  3, ANZ 35 — and `TP_FILTER` excludes none of them. The three UK tickets are
+  TAC-6152, TAC-5440 and TAC-5400, i.e. three of the seven from section 2; the
+  other four have since been closed properly, which is why that list is dated.
+- **33 assertions** in two Node suites over the shipped functions: the JQL for
+  both desks (and that it does *not* match statuses by name), that the real
+  server-side project pin accepts it, all three tile states (loading, failed,
+  loaded — and that 0 renders as `0` and stays drillable while "unknown"
+  renders as an em dash and does not), that the drill reads its own array and
+  the other five still read `ALL_ISSUES`, that personal mode filtered it and
+  left a null array null (that filter is gone — removed 17 Sep 2026), that a
+  desk switch clears it, and three `loadLive()`
+  paths: the happy one (reopened fetched *before* the first render), the
+  reopened query throwing (live queue still loads and paints, tile reads
+  "Count unavailable"), and a `projectEpoch` bump mid-flight (nothing assigned,
+  and the second query never even sent).
+- **In the browser**: six tiles in one row at 1440px and wrapping cleanly at
+  ~400px, the tile reading 3 with the drill listing exactly TAC-6152 / TAC-5440
+  / TAC-5400 under the tile row, personal mode taking it to 1 (feature since
+  removed), a desk switch
+  re-querying and repainting it, and — against a stub returning 503 for that
+  one query — the whole tab still rendering 42 open tickets with the tile at
+  "— Count unavailable" and no JS errors. The JQL the real page sent was read
+  out of the stub's log and matches what was validated against Jira.
+
+**Untested:** a desk where the two "not finished" forms disagree (none today),
+and the tile against the app's own REST proxy.
+
+**Session of 14 Sep 2026 (second change) — the SLA Breakdown tab.** Same
+technique again, with one upgrade: the real Jira payload was pulled through
+the connector **to a file** (the connector spills an oversized result to disk)
+rather than being retyped or sampled, so both the Node suite and the browser
+run were driven by the **actual 43 TAC tickets closed in the 7 days to
+14 Sep 2026**, SLA cycle payloads and all. Still no Jira OAuth session.
+
+- **The arithmetic was checked against Jira itself, not just against the
+  app.** Five independent JQL counts using `everBreached()` (section 2) give
+  43 closed, 7 / 6 / 8 / 4 breached on Triage / First Response / Response /
+  Resolution. The tab reports 84% / 86% / 81% / 91%, i.e. 36 / 37 / 35 / 39 of
+  43 — exact agreement between the app parsing SLA cycle payloads and Jira
+  evaluating its own SLA functions.
+- **The matrix and the Closed tab's strip were compared directly, in the
+  browser, on the same range**: strip 65% / 84% / 86% / 81% / 91% with "28 of
+  43 met all", All-assignees row identical, and the Closed tab's own summary
+  line agreeing at "15 breached" (43 − 28).
+- **25 assertions** over those real tickets: rows partition the set (six
+  assignees summing to 43), busiest-first ordering with Unassigned forced
+  last, every row equal to the same two functions over that person's tickets,
+  SLA Total at or below every named column on every row, the SLA picker
+  moving SLA Total **and nothing else**, one SLA selected making SLA Total
+  equal that column, nothing selected reading as an em dash, the tier filter
+  and personal mode recomputing rather than reusing (that filter is gone), the
+  13 range keys
+  matching `CLOSED_RANGES`, and the empty/partial states.
+- **In the browser**: the tab loads on Current Day and re-queries on range
+  change; Last 7 days reproduces the asserted matrix exactly; personal mode
+  reduced it to one row (Emi Pritchard, 5 tickets, 60/80/80/80/100) with the
+  banner — that path no longer exists; a desk switch re-queries in place and
+  keeps the range; the tier and
+  SLA panels open, replace each other rather than stacking, filter from inside
+  (43 → 37) and close on an outside click; **clicking Refresh with a panel
+  open both closes the panel and fires the refresh** (trap 5 clear — confirmed
+  by two queries in the stub's log; re-confirmed 17 Sep 2026 against the
+  header button, where it is structural rather than luck); the migration-quarter pager reads "100
+  loaded of 5,225 · Load all remaining (5,125)" and "Load more" grows it, with
+  the Closed tab then showing the same enlarged set **without re-querying**;
+  and a 503 on that query shows one error box with every control still usable
+  while the rest of the dashboard is untouched.
+
+**Untested:** this tab against the app's own REST proxy, and a range where
+the two tabs are looked at with different ranges *while a load is in flight*
+(the guards are written for it, and `slaStillCurrent()` was read rather than
+exercised).
+
+**A pre-existing gap this work surfaced, deliberately not fixed here:**
+`fetchClosedPage()` walks `nextPageToken` until it has 100 rows and will
+**spin forever** if Jira ever returns a non-null token with empty pages. The
+ticket timeline's changelog walk explicitly guards against exactly that
+(section 9's changelog-paging note); this one does not. It has never happened
+against real Jira — it happened against a badly written stub during this
+session, which is how it was noticed.
+
+**Session of 17 Sep 2026 — the Refresh button moved to the header.** Same
+technique: the real page served by a stub of the API routes over real Jira
+payloads, driven in a browser, plus the shipped dispatch run in a Node
+harness. Screenshots worked this time, so the header and all three stripped
+controls rows were also checked by eye.
+
+- **22 assertions** over the real `REFRESH_BY_TAB` extracted from the page:
+  every tab in `TAB_LABELS` has a job, each dispatches to the right loader
+  (live/priority → `loadLive`, closed → `loadClosed(true)`, vendor →
+  `loadVendor(true)`, sla → `loadSla(true)`, hist → `loadHistorical`), the
+  three cached tabs pass `force`, an unknown tab falls back to the live queue
+  rather than throwing, a second click while in flight fires nothing, a
+  rejected load still restores the button, `paintRefreshBtn()` survives a
+  missing DOM, the tooltip names each view, and the markup carries exactly one
+  Refresh control — in the header, before `#ar-btn`, with no `.cl-btn` Refresh
+  left in any controls row.
+- **In the browser, one tab at a time**: a real click on the header button
+  fired exactly the right query on each of the six reachable tabs (read out of
+  the stub's log — open+reopened+today for live and priority, closed+count for
+  Closed and for SLA Breakdown, the vendor query for Vendor Bugs, both week
+  queries for Historical), with the button reading "Refreshing…" and disabled
+  mid-flight and back to "Refresh" after, and the tooltip tracking the tab.
+- **Trap 5, re-checked**: with the Closed tab's SLA panel open, a real click at
+  the header button's coordinates closed the panel, un-pressed its button and
+  still fired the closed query.
+- Eyeballed: the header reads Personal mode · Refresh · Auto-refresh · Updated
+  · Sign out (Personal mode has since been removed), and the Closed, SLA Breakdown and Vendor Bugs controls rows sit
+  correctly without their old buttons.
+
+**Untested:** the wallboard's entry in `REFRESH_BY_TAB` (the header is hidden
+there, so nothing can click it) and what the button does mid-desk-switch — the
+`projectEpoch` guards inside each loader are what cover that, and they were
+not re-exercised here.
+
+**Session of 17 Sep 2026 (second change) — Personal mode removed.** A deletion
+rather than a feature, so the work was proving nothing else moved. Same stub
+harness over real Jira payloads, driven in a browser.
+
+- **The four existing Node suites still pass unchanged** (header refresh,
+  Vendor Bugs over the real 27 tickets, the error mapping, the server project
+  pin), which is the evidence that the removal did not reach into the logic
+  they cover.
+- **Every reference was removed, not just the visible ones**: the toggle, the
+  CSS block (`.pm-toggle` / `.pm-chip` / `.pm-note` / `.wb-personal`),
+  `matchesViewer()`, `personalFilter()`, `applyPersonalView()`,
+  `paintPersonalBtn()`, `personalBanner()`, `togglePersonalMode()`, the
+  localStorage pref, six banner call sites, three "Your tickets only" chips,
+  two empty-state branches, the wallboard badge and its dead "filtered
+  everything out" branch. A scripted assertion refuses to write the file while
+  any of those names survive, and the three stale *comments* that mentioned it
+  were rewritten rather than left to mislead.
+- **In the browser**: the header is now Refresh · Auto-refresh · Updated ·
+  Sign out with no toggle, `personalMode` is not even defined, and all seven
+  tabs render — Priority list 41 rows with its assignee picker (`All assignees
+  (42)`) always present, Closed 30 rows with its own picker, Vendor Bugs 27,
+  SLA Breakdown 6 rows, Historical and the Wallboard (no badge, title intact).
+  No console errors.
+
+**Untested:** nothing new — this session only removed code. The one thing to
+glance at with real credentials is that the Priority list and Closed assignee
+pickers still read sensibly now that they are the only way to narrow to one
+person.
+
+**Session of 17 Sep 2026 (third change) — drilling into the SLA matrix.**
+Same technique: the shipped functions in a Node harness over real Jira data,
+then the real page driven in a browser against the stub.
+
+- **39 assertions** over the 30 real TAC tickets closed in the week to 8 Sep
+  2026 (5 assignees, 14 breached). The load-bearing ones tie the drill to the
+  figure it came from: a named SLA's drill has exactly `withData` rows and
+  exactly `withData - met` red ones; `SLA Total`'s red count equals
+  `closedSlaTotal().breached`, i.e. 100% minus the tile; and `Closed` and
+  `SLA Total` mark the identical set of tickets red. Also: every red row is red
+  for the right reason (per-clock vs across-the-selection), ordering is
+  breached-first then newest-close-first, a vanished row or unknown column
+  resolves to null and the panel clears the state rather than throwing, the
+  assignee column appears only on the totals drill, cells with no data for a
+  clock are not clickable, exactly one cell is marked open, and toggling the
+  same cell twice closes it.
+- **`jsAttr()` is pinned by four cases** plus a hostile display name
+  (`X" onmouseover="alert(1)`): every `onclick` value it produces must still
+  decode to a complete `toggleSlaDrill(...)` call **and parse as JavaScript**,
+  which is the real question rather than whether the string appears anywhere.
+- **In the browser**: 36 clickable cells over 6 rows; Alisha Murray's SLA Total
+  (29%, "2 of 7 met all") opens 7 rows with 5 red and the note to match; her
+  SLA Triage (57%) opens 7 with 3; the totals row's Closed cell opens all 30
+  with 14 red and an Assignee column; clicking the same cell again closes it
+  and un-marks it; a drill row opens the ticket timeline (TAC-6105). Narrowing
+  the SLA picker through the tab's own `onSlaSlaCheck` took the open SLA Total
+  drill from 14 red to 7 and back, while a named column's drill held at 6 red
+  throughout.
+
+**A note for whoever tests this next:** `onClosedSlaCheck` and `onSlaSlaCheck`
+are different functions — the first re-renders the Closed tab, the second the
+SLA Breakdown. Calling the wrong one from the console changes the shared
+`selectedClosedSlas` set but repaints the tab you are not looking at, which
+looks exactly like the picker being ignored. It cost a wrong conclusion here
+for a few minutes.
+
+**The hover shipped broken and was fixed the same day.** See section 5b: the
+cell hover lost on specificity to the table's row hover, so it painted the same
+grey and read as nothing happening. Re-verified by resolving the cascade in the
+page — every `:hover` rule cloned with the pseudo-class swapped for a real
+class, which carries identical specificity — giving hovered cell
+`rgb(232,245,248)` against a row-hover sibling at `rgb(249,250,251)`, and the
+open cell holding `rgb(214,237,241)` plus its teal inset bar even while its row
+is hovered. Eight selectors and both tints are now asserted, and the assertions
+were checked against a deliberately reverted copy of the file to confirm they
+fail on the old rule rather than passing vacuously.
+
+**A measurement trap worth knowing before trusting a styling check:** when the
+app window is behind another window the Browser pane stops painting, and CSS
+**transitions never advance** — so `getComputedStyle()` keeps returning the
+*starting* colour and every hover probe reads as "no change", whether or not
+the CSS is right. That cost a wrong diagnosis here until `*{transition:none
+!important}` was injected before probing. Any future colour check should do the
+same, or read a freshly rendered element that has no transition to run.
+
+**Untested:** the drill against a range big enough to page (every check ran on
+a single-page range), and what a 5,000-row drill does to the browser — the
+panel renders every row it lists, with no cap.
 
 **Still untested:** everything on the Historical tab. Its two queries use
 different field sets (`HIST_CREATED_FIELDS` / `HIST_RESOLVED_FIELDS`) and read
@@ -1271,6 +1718,8 @@ Landmarks inside that script:
   into every JQL below
 - `switchProject()` / `projectEpoch` / `projectStale()` — the switch, the
   cache reset, and the in-flight-fetch guard (section 8, trap 6)
+- `REFRESH_BY_TAB` / `refreshActiveTab()` — the header's one Refresh button and
+  which loader each tab gets (section 8)
 - `callSearchTool` / `callMcpTool` — the only functions that talk to the server
 - `resolveSla()` — turns six SLA fields into one state: ticking / paused / completed / breached
 - `closedSlaState()` — the Closed list's *different* rule: ever-breached, over
@@ -1279,18 +1728,28 @@ Landmarks inside that script:
   derived views (section 7)
 - `fetchIssueDetail()` — the only per-issue read; walks the changelog
 - `onTicketRowClick()` — the one delegated listener behind every clickable row
+- `reopenedJql()` / `reopenedTile()` — the Live queue's own second query and
+  its tile (section 5a); `rawReopened` / `reopenedIssues` are its arrays
 - `buildPriorityList()` — the 11 tiers
 - `CLOSED_RANGES` / `closedJql()` — the 13 date windows and their JQL
 - `vendorJql()` / `vendorSections()` / `compareVendorVersion()` — the Vendor
   Bugs filter, its two sections and the free-text version sort (section 6)
 - `vendorUrlCell()` — the only place a user-supplied string becomes an href
 - `fetchClosedPage()` / `loadMoreClosed()` / `closedCache` — the Closed list's
-  pager and per-range cache
+  pager and per-range cache, shared with the SLA Breakdown tab
+- `loadSla()` / `renderSlaTable()` / `slaMatrixRow()` — the SLA Breakdown
+  matrix (section 5b); it owns `slaRange` and nothing else
+- `slaDrill` / `slaDrillSet()` / `slaDrillPanel()` — the tickets behind any
+  figure in that matrix, red where the SLA was missed (section 5b)
+- `jsAttr()` — the only safe way to put a data value into an `onclick=""`
 - `render()` — live tab; `renderPriorityList()` / `renderPriorityTable()`;
-  `renderClosed()` / `renderClosedTable()`; `renderVendor()` /
+  `renderClosed()` / `renderClosedTable()`; `renderSla()` / `renderSlaTable()`;
+  `renderVendor()` /
   `renderVendorTable()`; `renderTicketDetail()`;
   `renderHistorical()`; `renderWallboard()`
-- Personal mode block — identity lookup, `matchesViewer()`, `recomputeViews()`
+- `loadIdentity()` / `recomputeViews()` — the `/api/me` call behind `JIRA_BASE`,
+  and the one place loaders publish what renderers read (section 8; this is
+  what is left of the Personal mode block)
 
 Chart.js is pinned and hash-verified against the original CDN copy. If you
 replace it, verify the integrity hash rather than trusting a download.
@@ -1321,8 +1780,23 @@ replace it, verify the integrity hash rather than trusting a download.
   `VENDOR_COLS` together, plus the field id in `VENDOR_FIELDS`
 - **Change what counts as an SLA breach on closed tickets** →
   `closedSlaState()`, not `resolveSla()` — see section 5 on why they differ
-- **Show the 7 reopened tickets somewhere** → `loadLive()`'s
-  `resolution = Unresolved` is what hides them (section 2)
+- **Change what counts as reopened** → `reopenedJql()` (section 5a), not
+  `loadLive()`
+- **Add a column to the SLA Breakdown** → `CLOSED_KPI_SLAS`, which the Closed
+  tab's tiles and this matrix's columns both read; nothing else needs editing
+  (section 5b)
+- **Change what a matrix cell opens** → `slaDrillSet()`, which resolves a cell
+  to {tickets, red test, note}; keep the drill listing the cell's own
+  denominator or the panel stops matching the figure (section 5b)
+- **Break the SLA matrix down by something other than assignee** →
+  `renderSlaTable()`'s grouping; keep `slaMatrixRow()` for both the rows and
+  the totals row so the two cannot drift
+- **Put reopened tickets back into the triage view** → `loadLive()`'s
+  `resolution = Unresolved` is what keeps them out of `RAW_ISSUES`; the
+  Reopened tile surfaces them without doing that (sections 2 and 5a)
+- **Add a tab** → besides the markup and `TAB_LABELS`, give it an entry in
+  `REFRESH_BY_TAB` or the header's Refresh will quietly re-query the live
+  queue instead (section 8)
 - **Add a third desk** → one entry in `PROJECTS` (`views/index.html`) plus its
   key in `JIRA_PROJECT_KEYS`; nothing else, provided the project carries the
   same statuses, priorities, tier values and SLA fields (section 2 says how

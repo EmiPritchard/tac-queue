@@ -4,7 +4,7 @@ The TAC support queue dashboard as a standalone website. Viewers sign in with
 their **Atlassian account** — no Claude account required.
 
 Same dashboard as before: Live queue, Priority list (the 11-tier triage
-ordering), Closed, Vendor Bugs, Historical, Wallboard, and Personal mode.
+ordering), Closed, Vendor Bugs, Historical, SLA Breakdown and Wallboard.
 
 It covers **both TAC service desks** — UK (Jira project `TAC`) and ANZ
 (`TAPC`) — and the picker in the top-left switches between them. One desk is
@@ -25,10 +25,9 @@ every Jira call runs **as that person**. Consequences worth understanding:
 - There is no shared service-account token to leak or rotate.
 - Jira's own permission scheme decides what each viewer can see. Someone with
   no access to the TAC project sees an empty dashboard, not a filtered one.
-- **Personal mode is real here.** It matches on the signed-in Atlassian
-  `account_id`, and the underlying data is already limited to what that person
-  may read — unlike the Claude artifact version, where it was only a
-  client-side convenience filter.
+- Nothing in the app filters a view to the person looking at it. "Personal
+  mode" did that until 17 Sep 2026 and was removed; the Priority list and
+  Closed tab each have an assignee picker if you want just your own.
 
 Viewers need permission to browse **Service Desk – UK TAC** and, for the
 other half of the switcher, **Service Desk – ANZ TAC**. If your Jira admin

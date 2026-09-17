@@ -128,8 +128,12 @@ body{
   font-family:inherit;font-size:14px;line-height:16px;font-weight:600;
   color:var(--fg-2);transition:background-color var(--motion-base),border-color var(--motion-base),color var(--motion-base);
 }
-.ar-btn:hover{background:var(--primary-30);border-color:var(--sb-primary);color:var(--aa-primary)}
+.ar-btn:hover:not(:disabled){background:var(--primary-30);border-color:var(--sb-primary);color:var(--aa-primary)}
 .ar-btn.is-on{background:var(--primary-30);border-color:var(--sb-primary);color:var(--aa-primary)}
+/* The header Refresh is the only .ar-btn that can be disabled (while its
+   re-query is in flight), so it needs the same disabled treatment .cl-btn
+   already had — otherwise it keeps offering a hover state it will not act on. */
+.ar-btn:disabled{color:var(--fg-4);cursor:default;background:var(--disabled-bg);border-color:var(--border-default)}
 .ar-dot{width:7px;height:7px;border-radius:50%;background:var(--grey-300);flex:none}
 .ar-btn.is-on .ar-dot{background:var(--sb-primary)}
 @keyframes a4-breathe{0%,100%{opacity:1}50%{opacity:.35}}
@@ -493,39 +497,52 @@ body{
 .tile.is-static{cursor:default;user-select:auto}
 .tile.is-static:hover{background:var(--bg-surface)}
 
-/* ═══ Personal mode ═══════════════════════════════════════════════════════ */
-.pm-toggle{
-  display:inline-flex;align-items:center;gap:8px;
-  background:var(--bg-surface);border:1px solid var(--border-default);
-  border-radius:var(--radius-sm);padding:6px 12px;cursor:pointer;
-  font-family:inherit;font-size:14px;line-height:16px;font-weight:600;
-  color:var(--fg-2);user-select:none;white-space:nowrap;
-  transition:background-color var(--motion-base),border-color var(--motion-base),color var(--motion-base);
+/* ═══ SLA Breakdown matrix ════════════════════════════════════════════════ */
+/* One percentage per cell with its own "m of n" under it, so a figure is
+   never read without its denominator — the whole point of the per-SLA
+   denominators the Closed tab's tiles already report. */
+.sla-pct{font-size:15px;line-height:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.sla-sub{font-size:11px;line-height:15px;color:var(--fg-4);font-variant-numeric:tabular-nums}
+.sla-name{font-weight:600;color:var(--fg-1)}
+/* The totals row is the same arithmetic over everyone, so it reads as a
+   footer rather than as another person. */
+.tbl tbody tr.sla-row-all td{
+  border-top:2px solid var(--border-strong);
+  background:var(--grey-50);
 }
-.pm-toggle:hover{background:var(--primary-30);border-color:var(--sb-primary);color:var(--aa-primary)}
-.pm-toggle.is-on{background:var(--primary-30);border-color:var(--sb-primary);color:var(--aa-primary)}
-.pm-toggle.is-error{background:var(--red-10);border-color:var(--red-30);color:var(--aa-red)}
-.pm-toggle input{width:14px;height:14px;margin:0;cursor:pointer;accent-color:var(--sb-primary);flex:none}
-.pm-toggle:focus-within{outline:2px solid var(--sb-primary);outline-offset:1px}
-.pm-chip{
-  display:inline-flex;align-items:center;gap:6px;
-  background:var(--primary-30);color:var(--aa-primary);
-  font-size:13px;line-height:18px;font-weight:600;
-  padding:4px 11px;border-radius:var(--radius-pill);white-space:nowrap;
+.tbl tbody tr.sla-row-all:hover td{background:var(--grey-50)}
+/* Every figure in the matrix opens the tickets behind it, so every figure has
+   to look clickable — a percentage that silently is not would be the odd one
+   out. The open cell keeps a tint and a left bar so it is obvious which number
+   the panel below belongs to.
+
+   Both states must OUT-RANK the table's row hover and repeat themselves under
+   it — exactly the trap `.row-breach` documents further up. Written as a plain
+   `.sla-cell:hover` (0,2,0) they lost to `.tbl tbody tr:hover td` (0,2,3) and
+   to `.tbl tbody tr.sla-row-all:hover td` (0,4,3), so pointing at a figure
+   painted the same grey the whole row was already painting: the hover read as
+   "nothing happens". Found 17 Sep 2026, reported as "the hover colour is the
+   same as the background colour". The tints are brand blues rather than
+   another grey, so a cell reads apart from both the white rows and that grey. */
+.sla-cell{cursor:pointer;transition:background-color var(--motion-base)}
+.tbl tbody tr td.sla-cell:hover,
+.tbl tbody tr:hover td.sla-cell:hover,
+.tbl tbody tr.sla-row-all td.sla-cell:hover,
+.tbl tbody tr.sla-row-all:hover td.sla-cell:hover{background:var(--primary-30)}
+.tbl tbody tr td.sla-cell.is-drilled,
+.tbl tbody tr:hover td.sla-cell.is-drilled,
+.tbl tbody tr.sla-row-all td.sla-cell.is-drilled,
+.tbl tbody tr.sla-row-all:hover td.sla-cell.is-drilled{
+  background:var(--primary-40);box-shadow:inset 3px 0 0 var(--sb-primary);
 }
-.pm-note{
-  display:flex;align-items:flex-start;gap:8px;
-  background:var(--primary-20);border:1px solid var(--primary-50);
-  border-radius:var(--radius-md);padding:10px var(--space-4);
-  color:var(--fg-2);font-size:13px;line-height:18px;margin-bottom:var(--space-4);
+/* A cell with nothing behind it (no tickets carry that clock) is not a lie:
+   it simply does not offer the click. */
+.sla-cell-empty{cursor:default}
+.sla-drill-note{
+  padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-default);
+  font-size:13px;line-height:18px;color:var(--fg-3);background:var(--bg-surface);
 }
-.pm-note .ico{margin-top:2px;color:var(--sb-primary);flex:none}
-.wb-personal{
-  display:inline-flex;align-items:center;gap:6px;
-  background:var(--primary-30);color:var(--aa-primary);
-  font-size:clamp(11px,1.1vw,15px);font-weight:600;
-  padding:3px 12px;border-radius:var(--radius-pill);white-space:nowrap;
-}
+
 .tier-row td{
   background:var(--grey-50);border-bottom:1px solid var(--border-default);
   padding:7px 14px;font-size:12px;line-height:16px;font-weight:600;
@@ -752,10 +769,9 @@ body{
       <span class="badge-view" id="view-badge">Live queue</span>
     </div>
     <div class="hdr-meta">
-      <label class="pm-toggle" id="pm-toggle" title="Filter every view to tickets assigned to you">
-        <input type="checkbox" id="pm-check" onchange="togglePersonalMode(this.checked)">
-        <span id="pm-label">Personal mode</span>
-      </label>
+      <button class="ar-btn" id="refresh-btn" onclick="refreshActiveTab()">
+        <span id="refresh-label">Refresh</span>
+      </button>
       <button class="ar-btn" id="ar-btn" onclick="toggleAutoRefresh()">
         <span class="ar-dot" id="ar-dot"></span>
         <span id="ar-label">Auto-refresh off</span>
@@ -770,6 +786,7 @@ body{
     <button class="tab" id="tab-closed" onclick="switchTab('closed')"></button>
     <button class="tab" id="tab-vendor" onclick="switchTab('vendor')"></button>
     <button class="tab" id="tab-hist" onclick="switchTab('hist')"></button>
+    <button class="tab" id="tab-sla" onclick="switchTab('sla')"></button>
     <button class="tab" id="tab-wall" onclick="switchTab('wall')"></button>
   </div>
 </div>
@@ -797,6 +814,10 @@ body{
     <button class="nav-btn" id="btn-next" onclick="changeWeek(1)" disabled></button>
   </div>
   <div id="hist-root"><div class="loading-state"><div class="spinner"></div><span>Loading&hellip;</span></div></div>
+</div>
+
+<div id="view-sla" style="display:none">
+  <div id="sla-root"></div>
 </div>
 
 <div id="view-wall" style="display:none">
@@ -851,8 +872,8 @@ const PROJECTS = [
 ];
 // Deliberately NOT persisted to localStorage: every fresh load opens the UK
 // desk, so a wallboard TV and a shared link always start from the same place,
-// and the switch lasts for the session. (Personal mode does persist — that is
-// an identity, not a place.)
+// and the switch lasts for the session. Nothing in this app is persisted now
+// that Personal mode is gone — it held the only localStorage key.
 let projectKey = PROJECTS[0].key;
 function currentProject() { return PROJECTS.find(p => p.key === projectKey) || PROJECTS[0]; }
 
@@ -1050,6 +1071,12 @@ function slaPctColour(pct) {
 function tally(arr, fn) { const m={}; for(const x of arr){const k=fn(x)||'Unknown';m[k]=(m[k]||0)+1;} return m; }
 function avg(arr) { const v=arr.filter(x=>x!=null); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// A value safe to drop into an onclick="" attribute AS A JS STRING LITERAL.
+// JSON.stringify quotes and escapes it for JavaScript, esc() then escapes it
+// for the attribute; the browser undoes the second before the first. Assignee
+// names are the reason this exists — `onclick="f('O'Brien')"` is a syntax
+// error, and a name with a quote in it would otherwise break the row silently.
+function jsAttr(v){ return esc(JSON.stringify(String(v == null ? '' : v))); }
 
 // Reusable badge markup
 function badge(text, bg, fg, iconName, pill) {
@@ -1289,11 +1316,13 @@ function paintProjectSelect() {
 function paintChrome() {
   document.getElementById('brand-mark').innerHTML = brandMark(26);
   paintProjectSelect();
+  paintRefreshBtn();
   document.getElementById('tab-live').innerHTML = ico('gauge-high',15)        + '<span>Live queue</span>';
   document.getElementById('tab-priority').innerHTML = ico('triangle-exclamation',15) + '<span>Priority list</span>';
   document.getElementById('tab-closed').innerHTML = ico('circle-check',15)    + '<span>Closed</span>';
   document.getElementById('tab-vendor').innerHTML = ico('building',15)        + '<span>Vendor Bugs</span>';
   document.getElementById('tab-hist').innerHTML = ico('clock-rotate-left',15) + '<span>Historical</span>';
+  document.getElementById('tab-sla').innerHTML = ico('clock',15)             + '<span>SLA Breakdown</span>';
   document.getElementById('tab-wall').innerHTML = ico('desktop',15)           + '<span>Wallboard</span>';
   document.getElementById('btn-prev').innerHTML = ico('chevron-left',12)  + '<span>Previous</span>';
   document.getElementById('btn-next').innerHTML = '<span>Next</span>' + ico('chevron-right',12);
@@ -1302,7 +1331,7 @@ function paintChrome() {
 // ── Tab switching ─────────────────────────────────────────────────────────────
 let histEverLoaded=false;
 let activeTab='live';   // which view is on screen; switchProject reloads it
-const TAB_LABELS = {live:'Live queue', priority:'Priority list', closed:'Closed', vendor:'Vendor Bugs', hist:'Historical', wall:'Wallboard'};
+const TAB_LABELS = {live:'Live queue', priority:'Priority list', closed:'Closed', vendor:'Vendor Bugs', hist:'Historical', sla:'SLA Breakdown', wall:'Wallboard'};
 function switchTab(tab) {
   activeTab = TAB_LABELS[tab] ? tab : 'live';
   for (const t of Object.keys(TAB_LABELS)) {
@@ -1320,7 +1349,11 @@ function switchTab(tab) {
   // Same reasoning for Vendor Bugs: its query is its own, and none of its
   // tickets are in RAW_ISSUES to begin with (see the section header).
   if (tab==='vendor'&&!vendorEverLoaded) { vendorEverLoaded=true; loadVendor(false); }
+  // The SLA Breakdown asks Jira the same question as the Closed list, so if
+  // that tab has already loaded this range the shared cache answers instantly.
+  if (tab==='sla'&&!slaEverLoaded) { slaEverLoaded=true; loadSla(false); }
   if (tab==='wall') setTimeout(renderWallboard, 50); // wait for display:block to take effect
+  paintRefreshBtn();   // the tooltip names the view this button would re-query
 }
 // ── Switching desk ───────────────────────────────────────────────────────────
 // Everything the browser is holding is scoped to ONE project: the live array,
@@ -1330,9 +1363,9 @@ function switchTab(tab) {
 // loop, and a row left over from the other desk would open a timeline the
 // server's key guard is entitled to refuse.
 //
-// Kept across a switch: Personal mode (an identity, valid on both desks), the
-// auto-refresh setting, which tab you are on, and the tier/SLA pickers (both
-// desks use the same 1.5/2.0/2.5 tiers and the same six SLA clocks). Reset:
+// Kept across a switch: the auto-refresh setting, which tab you are on, and
+// the tier/SLA pickers (both desks use the same 1.5/2.0/2.5 tiers and the same
+// six SLA clocks). Reset:
 // the assignee pickers, because the two desks are staffed by different people
 // and a name from one filters the other down to nothing.
 function switchProject(key) {
@@ -1353,11 +1386,13 @@ function switchProject(key) {
   RAW_ISSUES = []; ALL_ISSUES = [];
   rawWbToday = { created: null, resolved: null };
   wbTodayTickets = { created: null, resolved: null };
+  rawReopened = null; reopenedIssues = null; reopenedError = '';
   rawHistCreated = []; rawHistResolved = [];
   histCreated = []; histResolved = [];
   histEverLoaded = false; activeHistDrill = null;
   closedCache.clear();
   closedEverLoaded = false; closedBusy = false; closedError = '';
+  slaEverLoaded = false; slaBusy = false; slaError = ''; slaPanelOpen = null; slaDrill = null;
   vendorIssues = null; vendorFetchedAt = 0;
   vendorEverLoaded = false; vendorBusy = false; vendorError = '';
   detailCache.clear();
@@ -1371,6 +1406,7 @@ function switchProject(key) {
   document.getElementById('priority-root').innerHTML = spinner('Fetching ' + next.name + ' from Jira…');
   document.getElementById('closed-root').innerHTML = '';
   document.getElementById('vendor-root').innerHTML = '';
+  document.getElementById('sla-root').innerHTML = '';
   document.getElementById('hist-root').innerHTML = spinner('Loading…');
   document.getElementById('ts').textContent = '—';
 
@@ -1380,6 +1416,7 @@ function switchProject(key) {
   loadLive();
   if (activeTab === 'closed') { closedEverLoaded = true; loadClosed(false); }
   if (activeTab === 'vendor') { vendorEverLoaded = true; loadVendor(false); }
+  if (activeTab === 'sla')    { slaEverLoaded    = true; loadSla(false); }
   if (activeTab === 'hist')   { histEverLoaded   = true; loadHistorical(); }
 }
 
@@ -1745,6 +1782,10 @@ const DRILLS={
   prog:   {title:'In progress',      filter:i=>i.fields?.status?.name==='In Progress'},
   hi:     {title:'P3+ priority',     filter:i=>/p[123]/i.test(i.fields?.priority?.name||'')},
   aged:   {title:'Open over 7 days', filter:i=>i.fields?.created&&(Date.now()-new Date(i.fields.created).getTime())>7*24*60*60*1000},
+  // The one drill that does NOT read ALL_ISSUES: a reopened ticket carries a
+  // resolution, so loadLive()'s `resolution = Unresolved` pull never contained
+  // it. Its own array comes from its own query — hence `source`.
+  reopened:{title:'Reopened',        filter:()=>true, source:()=>reopenedIssues||[]},
 };
 
 function openDrill(type) {
@@ -1752,8 +1793,8 @@ function openDrill(type) {
   if (activeDrill===type) { closeDrill(); return; }
   document.querySelector(`[data-drill="${type}"]`)?.classList.add('is-active');
   activeDrill=type;
-  const {title,filter}=DRILLS[type];
-  renderDrill(title,ALL_ISSUES.filter(filter));
+  const {title,filter,source}=DRILLS[type];
+  renderDrill(title,(source?source():ALL_ISSUES).filter(filter));
 }
 function closeDrill() {
   document.querySelectorAll('[data-drill]').forEach(c=>c.classList.remove('is-active'));
@@ -1786,95 +1827,33 @@ function ticketTable(tickets, emptyMsg) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ── Personal mode ─────────────────────────────────────────────────────────────
-// Narrows every view to the tickets assigned to whoever is looking at the page.
-//
-// Identity comes from the Atlassian connector: MCP calls run with the VIEWER'S
-// own credentials, so atlassianUserInfo returns them, not whoever published
-// this artifact. That is the Jira/Atlassian identity — the claude.ai account
-// email is not exposed to the page — which is the right key anyway, since the
-// point is to match Jira's assignee field.
-//
-// This is a focus tool, NOT an access control. The unfiltered queue is still
-// fetched and still sits in memory; Jira's own permissions decide what any
-// given viewer is allowed to read. The banner in the UI says so.
+// ── The view arrays ───────────────────────────────────────────────────────────
+// Loaders write the RAW_* arrays; renderers read the view arrays beside them.
+// The split is a leftover of Personal mode, which filtered one into the other
+// and was removed on 17 Sep 2026: access is Jira's own permission scheme, and
+// the assignee pickers cover "just mine" per view. Nothing derives anything
+// now, so recomputeViews() is a straight hand-off — kept because it is the one
+// place the renderers' input is assigned, and every loader already calls it.
+// Collapsing the two names would touch every renderer for no behaviour change.
 // ═══════════════════════════════════════════════════════════════════════════
-let personalMode  = false;
-let personalUser  = null;    // { accountId, email, name }
-let personalState = 'off';   // off | loading | on | error
-let personalError = '';
-
-// Raw fetches stay pristine; the view arrays the renderers read are derived.
 let RAW_ISSUES = [];
 let rawHistCreated = [], rawHistResolved = [];
 let rawWbToday = { created: null, resolved: null };
+// Reopened tickets: null = not loaded (or the query failed), array = loaded.
+let rawReopened = null, reopenedIssues = null, reopenedError = '';
 
-function matchesViewer(issue) {
-  const a = issue.fields?.assignee;
-  if (!a || !personalUser) return false;
-  // accountId first: it survives display-name changes and the privacy setting
-  // that hides emailAddress from the API. Email and name are fallbacks only.
-  if (a.accountId && personalUser.accountId) return a.accountId === personalUser.accountId;
-  if (a.emailAddress && personalUser.email) return a.emailAddress.toLowerCase() === personalUser.email.toLowerCase();
-  return !!(a.displayName && personalUser.name && a.displayName === personalUser.name);
-}
-function personalFilter(list) {
-  if (!Array.isArray(list)) return list;
-  return (personalMode && personalUser) ? list.filter(matchesViewer) : list;
-}
-// Recompute what the renderers read. Cheap: pure array filtering, no fetches.
 function recomputeViews() {
-  ALL_ISSUES   = personalFilter(RAW_ISSUES);
-  histCreated  = personalFilter(rawHistCreated);
-  histResolved = personalFilter(rawHistResolved);
-  wbTodayTickets = {
-    created:  rawWbToday.created  ? personalFilter(rawWbToday.created)  : rawWbToday.created,
-    resolved: rawWbToday.resolved ? personalFilter(rawWbToday.resolved) : rawWbToday.resolved,
-  };
-}
-function applyPersonalView() {
-  recomputeViews();
-  paintPersonalBtn();
-  if (RAW_ISSUES.length) render(ALL_ISSUES);
-  if (histEverLoaded) renderHistorical();
-  if (closedEverLoaded) renderClosed();
-  if (vendorEverLoaded) renderVendor();
-  renderWallboard();
+  ALL_ISSUES   = RAW_ISSUES;
+  histCreated  = rawHistCreated;
+  histResolved = rawHistResolved;
+  wbTodayTickets = { created: rawWbToday.created, resolved: rawWbToday.resolved };
+  reopenedIssues = rawReopened;
 }
 
-function personalPrefSave(on) { try { localStorage.setItem('a4tac_personal', on ? '1' : '0'); } catch (e) {} }
-function personalPrefLoad()   { try { return localStorage.getItem('a4tac_personal') === '1'; } catch (e) { return false; } }
-
-function paintPersonalBtn() {
-  const wrap = document.getElementById('pm-toggle');
-  const lbl  = document.getElementById('pm-label');
-  const box  = document.getElementById('pm-check');
-  if (!wrap || !lbl) return;
-  wrap.classList.toggle('is-on', personalState === 'on');
-  wrap.classList.toggle('is-error', personalState === 'error');
-  if (box) box.checked = personalMode;
-  if (personalState === 'loading') { lbl.textContent = 'Identifying you\u2026'; wrap.title = ''; return; }
-  if (personalState === 'error')   { lbl.textContent = 'Personal mode unavailable'; wrap.title = personalError; return; }
-  if (personalState === 'on') {
-    const who = personalUser?.name || personalUser?.email || 'you';
-    lbl.textContent = 'Personal mode \u00b7 ' + who;
-    wrap.title = 'Showing only tickets assigned to ' + who + '.';
-    return;
-  }
-  lbl.textContent = 'Personal mode';
-  wrap.title = 'Filter every view to tickets assigned to you';
-}
-
-function personalBanner() {
-  if (!(personalMode && personalUser)) return '';
-  const who = personalUser.name || personalUser.email || 'you';
-  return `<div class="pm-note">${ico('user',13)}<span>Filtered to tickets assigned to <strong>${esc(who)}</strong>.</span></div>`;
-}
-
-// One /api/me call answers two questions: who is looking (Personal mode) and
-// which Atlassian site their token reaches (JIRA_BASE, for browse links).
-// Called once at boot and memoised, so toggling Personal mode is instant and
-// the ticket links are already correct on the very first render.
+// /api/me answers the one question the page still needs of it: which Atlassian
+// site this token reaches, because JIRA_BASE (every ticket's browse link) comes
+// out of it. Called once at boot and memoised. It doubles as the session probe
+// — a 401 here is how an expired login surfaces before any query runs.
 let identityPromise = null;
 async function loadIdentity() {
   if (identityPromise) return identityPromise;
@@ -1882,39 +1861,12 @@ async function loadIdentity() {
     const info = readPayload(await callMcpTool(MCP_USERINFO, {}));
     if (!info || (!info.account_id && !info.email)) throw new Error('Jira did not return an identity for you.');
     if (info.siteUrl) JIRA_BASE = String(info.siteUrl).replace(/\/+$/, '') + '/browse';
-    personalUser = { accountId: info.account_id || '', email: info.email || '', name: info.name || '' };
-    return personalUser;
+    return info;
   })();
   // A failed lookup must not be cached as a permanent "no": the usual cause is
   // an expired session, and the next attempt happens after a re-auth.
   identityPromise.catch(() => { identityPromise = null; });
   return identityPromise;
-}
-
-async function togglePersonalMode(on) {
-  if (!on) {
-    personalMode = false; personalState = 'off'; personalError = '';
-    personalPrefSave(false);
-    applyPersonalView();
-    return;
-  }
-  personalMode = true;
-  personalPrefSave(true);
-  priorityAssignee = '';           // the manual picker is redundant once scoped to you
-  closedAssignee = '';             // ditto on the Closed list
-  if (personalUser) { personalState = 'on'; applyPersonalView(); return; }
-
-  personalState = 'loading'; personalError = ''; paintPersonalBtn();
-  try {
-    await loadIdentity();
-    personalState = 'on';
-  } catch (err) {
-    personalMode = false;
-    personalState = 'error';
-    personalError = err && err.code ? mcpErrorMessage(err) : (err?.message || 'Could not identify you.');
-    personalUser = null;
-  }
-  applyPersonalView();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2198,10 +2150,7 @@ function renderPriorityList(issues) {
   const el = document.getElementById('priority-root');
   if (!el) return; // view not mounted yet
   if (!issues || !issues.length) {
-    const who = personalUser?.name || 'you';
-    el.innerHTML = personalBanner() + (personalMode && personalUser
-      ? `<div class="empty">No open tickets assigned to ${esc(who)}.</div>`
-      : `<div class="empty">No open tickets.</div>`);
+    el.innerHTML = `<div class="empty">No open tickets.</div>`;
     return;
   }
   // Options come from the whole open queue so the counts show the real
@@ -2218,8 +2167,6 @@ function renderPriorityList(issues) {
       `<option value="${esc(n)}"${n === priorityAssignee ? ' selected' : ''}>${esc(n)} (${counts[n]})</option>`))
     .join('');
 
-  // Independent of assignee/personal-mode filtering, so both appear in both
-  // branches below.
   const awaitingInternalToggle = `<label class="pc-checkbox">
        <input type="checkbox" ${showAwaitingInternal ? 'checked' : ''} onchange="onShowAwaitingInternalChange(this.checked)">
        <span>Show Awaiting Internal Team</span>
@@ -2236,24 +2183,16 @@ function renderPriorityList(issues) {
        </div>` : ''}
      </div>`;
 
-  // In personal mode the picker is redundant — the whole page is already scoped
-  // to the viewer — so it is replaced by a static chip rather than left live and
-  // able to contradict the header toggle.
-  const controls = (personalMode && personalUser)
-    ? `<span class="pm-chip">${ico('user',11)}Your tickets only</span>
-       ${tacTierSelect}
-       ${awaitingInternalToggle}
-       <span class="priority-summary" id="priority-summary"></span>`
-    : `<label class="pc-label" for="priority-assignee">Assignee</label>
-       <div class="pc-select-wrap">
-         <select class="pc-select" id="priority-assignee" onchange="onPriorityAssigneeChange(this.value)">${options}</select>
-         ${ico('chevron-down', 10)}
-       </div>
-       ${tacTierSelect}
-       ${awaitingInternalToggle}
-       <span class="priority-summary" id="priority-summary"></span>`;
+  const controls =
+    `<label class="pc-label" for="priority-assignee">Assignee</label>
+     <div class="pc-select-wrap">
+       <select class="pc-select" id="priority-assignee" onchange="onPriorityAssigneeChange(this.value)">${options}</select>
+       ${ico('chevron-down', 10)}
+     </div>
+     ${tacTierSelect}
+     ${awaitingInternalToggle}
+     <span class="priority-summary" id="priority-summary"></span>`;
   el.innerHTML = `
-    ${personalBanner()}
     <div class="priority-controls">${controls}</div>
     <div id="priority-table"></div>`;
   renderPriorityTable(issues);
@@ -2631,7 +2570,7 @@ function onClosedRangeChange(value) {
   loadClosed(false);
 }
 function onClosedAssigneeChange(value) { closedAssignee = value; renderClosedTable(); }
-function onClosedRefresh() { loadClosed(true); }
+// The header's Refresh calls loadClosed(true) directly — see REFRESH_BY_TAB.
 
 // Both Closed-tab panels share one open slot, so opening the SLA picker
 // closes the tier one rather than stacking two overlapping panels.
@@ -2689,16 +2628,22 @@ function closedSlaButtonLabel() {
   return `SLA: ${selectedClosedSlas.size} of ${all}`;
 }
 
-function closedMultiSelect(which, label, options) {
-  const open = closedPanelOpen === which;
+// The panel markup is shared with the SLA Breakdown tab, which carries the
+// same two pickers over the same state — `toggleFn` is the name of whichever
+// tab's toggle, since each owns its own open slot. Keep the `which` values
+// ('tier' / 'sla') identical on both tabs: the wide-panel rule reads them.
+function msPanelHtml(which, label, options, open, toggleFn) {
   return `<div class="tt-multiselect">
-       <button type="button" class="tt-ms-btn${open ? ' is-open' : ''}" onclick="toggleClosedPanel('${which}', event)">
+       <button type="button" class="tt-ms-btn${open ? ' is-open' : ''}" onclick="${toggleFn}('${which}', event)">
          <span>${esc(label)}</span>${ico('chevron-down', 10)}
        </button>
        ${open ? `<div class="tt-ms-panel${which === 'sla' ? ' is-wide' : ''}" onclick="event.stopPropagation()">
          ${options}
        </div>` : ''}
      </div>`;
+}
+function closedMultiSelect(which, label, options) {
+  return msPanelHtml(which, label, options, closedPanelOpen === which, 'toggleClosedPanel');
 }
 
 // ── Render ───────────────────────────────────────────────────────────────────
@@ -2742,8 +2687,8 @@ function closedRow(issue) {
 // ── Closed list: KPI summary strip ───────────────────────────────────────────
 // Off by default, revealed by the "Show summary" tickbox, and it summarises
 // exactly the rows the current filters are showing — the same `shown` array
-// the table renders, so personal mode, the assignee picker and the TAC Tier
-// filter all feed straight into it.
+// the table renders, so the assignee picker and the TAC Tier filter both feed
+// straight into it.
 //
 // Deliberately NOT affected by the SLA multi-select: that control scopes which
 // clocks turn a row red, whereas these tiles report four SLAs by name. Letting
@@ -2896,7 +2841,7 @@ function renderClosed() {
 
   // Assignee options come from the loaded set, which is all this view has —
   // see the pager note about filters only seeing what is loaded.
-  const loaded = entry ? personalFilter(entry.issues) : [];
+  const loaded = entry ? entry.issues : [];
   const counts = tally(loaded, assigneeName);
   const names = Object.keys(counts).sort((a, b) =>
     a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b));
@@ -2914,16 +2859,14 @@ function renderClosed() {
            <span>${esc(SLA_FIELD_NAMES[f] || f)}</span>
          </label>`).join('');
 
-  const assigneeControl = (personalMode && personalUser)
-    ? `<span class="pm-chip">${ico('user',11)}Your tickets only</span>`
-    : `<label class="pc-label" for="closed-assignee">Assignee</label>
-       <div class="pc-select-wrap">
-         <select class="pc-select" id="closed-assignee" onchange="onClosedAssigneeChange(this.value)">${assigneeOptions}</select>
-         ${ico('chevron-down', 10)}
-       </div>`;
+  const assigneeControl =
+    `<label class="pc-label" for="closed-assignee">Assignee</label>
+     <div class="pc-select-wrap">
+       <select class="pc-select" id="closed-assignee" onchange="onClosedAssigneeChange(this.value)">${assigneeOptions}</select>
+       ${ico('chevron-down', 10)}
+     </div>`;
 
   el.innerHTML = `
-    ${personalBanner()}
     <div class="priority-controls">
       <label class="pc-label" for="closed-range">Closed</label>
       <div class="pc-select-wrap">
@@ -2937,9 +2880,6 @@ function renderClosed() {
         <input type="checkbox" ${showClosedKpis ? 'checked' : ''} onchange="onShowClosedKpisChange(this.checked)">
         <span>Show summary</span>
       </label>
-      <button class="cl-btn" onclick="onClosedRefresh()"${closedBusy ? ' disabled' : ''} title="Discard the cached result for this range and re-query Jira">
-        <span>${closedBusy ? 'Refreshing…' : 'Refresh'}</span>
-      </button>
       <span class="priority-summary" id="closed-summary"></span>
     </div>
     ${closedError ? errorHtml(closedError) : ''}
@@ -2961,7 +2901,7 @@ function renderClosedTable() {
   const entry = closedCacheGet(closedRange);
   if (!entry) return;
 
-  const loadedAll = personalFilter(entry.issues);
+  const loadedAll = entry.issues;
   let shown = closedAssignee ? loadedAll.filter(i => assigneeName(i) === closedAssignee) : loadedAll;
   shown = shown.filter(closedMatchesTacTier);
   // Jira already returns ORDER BY resolved DESC, but the pager concatenates
@@ -3007,7 +2947,12 @@ function renderClosedTable() {
 // jumped, so this loads cumulatively rather than offering numbered pages —
 // which suits a newest-first list anyway: page one is always the tickets
 // people actually came for.
-function closedPager(entry, shownCount) {
+// Shared with the SLA Breakdown tab, which pages the same cache entry through
+// its own loader: `loadFn` is that loader's name and `busy` its own flag, so
+// the two tabs cannot disable each other's buttons. `note` differs because
+// what a partial load costs differs — a short list on one, a whole column of
+// percentages describing a slice on the other.
+function closedPagerHtml(entry, busy, loadFn, note) {
   if (!entry.nextToken) {
     // Nothing left to fetch; only worth saying so if a pager was ever in play.
     return entry.issues.length > CLOSED_PAGE_SIZE
@@ -3016,19 +2961,431 @@ function closedPager(entry, shownCount) {
   }
   const remaining = entry.total != null ? Math.max(0, entry.total - entry.issues.length) : null;
   const remTxt = remaining != null ? remaining.toLocaleString('en-GB') : 'the rest';
-  const busy = closedBusy ? ' disabled' : '';
+  const dis = busy ? ' disabled' : '';
+  return `<div class="cl-pager">
+    <button class="cl-btn"${dis} onclick="${loadFn}(false)">
+      ${ico('chevron-down', 12)}<span>${busy ? 'Loading…' : 'Load more'}</span>
+    </button>
+    <button class="cl-btn"${dis} onclick="${loadFn}(true)">
+      <span>Load all remaining (${remTxt})</span>
+    </button>
+    <span class="cl-pager-note">${esc(note)}</span>
+  </div>`;
+}
+function closedLoadedNote(entry) {
+  return `${entry.issues.length.toLocaleString('en-GB')} loaded`
+       + (entry.total != null ? ' of ' + entry.total.toLocaleString('en-GB') : '');
+}
+function closedPager(entry, shownCount) {
   const filterNote = shownCount !== entry.issues.length
     ? ` · ${shownCount.toLocaleString('en-GB')} shown after filters`
     : '';
-  return `<div class="cl-pager">
-    <button class="cl-btn"${busy} onclick="loadMoreClosed(false)">
-      ${ico('chevron-down', 12)}<span>${closedBusy ? 'Loading…' : 'Load more'}</span>
-    </button>
-    <button class="cl-btn"${busy} onclick="loadMoreClosed(true)">
-      <span>Load all remaining (${remTxt})</span>
-    </button>
-    <span class="cl-pager-note">${entry.issues.length.toLocaleString('en-GB')} loaded${entry.total != null ? ' of ' + entry.total.toLocaleString('en-GB') : ''}${filterNote}. The filters and the assignee list only see what is loaded.</span>
+  return closedPagerHtml(entry, closedBusy, 'loadMoreClosed',
+    `${closedLoadedNote(entry)}${filterNote}. The filters and the assignee list only see what is loaded.`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── SLA Breakdown ─────────────────────────────────────────────────────────────
+// The Closed tab's KPI summary, per assignee: one row per person, one column
+// per SLA, over the same 13 date ranges.
+//
+// **It asks Jira exactly the same question as the Closed list** — closedJql()
+// over CLOSED_FIELDS — so the two tabs share one cache (closedCache), one
+// fetcher (fetchClosedPage) and, most importantly, the same two arithmetic
+// functions: closedSlaAttainment() for the four named SLAs and
+// closedSlaTotal() for the aggregate. Nothing here recomputes a percentage.
+// A matrix that disagreed with the strip it is broken down from would be
+// worse than no matrix, and the only way to guarantee it cannot is to call
+// the same code. Opening this tab on a range the Closed tab has already
+// loaded therefore costs no Jira call at all.
+//
+// What is NOT shared is the range on screen, the busy/error flags and the
+// "ever loaded" latch, because the two tabs are looked at independently —
+// hence the parallel loaders below rather than a second call into
+// loadClosed(), whose staleness guard tests closedRange.
+//
+// The TAC Tier filter and the SLA multi-select ARE shared state
+// (closedTacTiers / selectedClosedSlas). Both decide what a figure labelled
+// "SLA Total" means, and two tabs quietly answering that differently is
+// precisely the kind of silent disagreement this file keeps warning about.
+// As on the Closed tab, the SLA picker scopes ONLY the SLA Total column: the
+// four named columns report specific clocks, so letting the picker blank one
+// out would make a named column lie.
+//
+// Rows are ordered busiest-first (then alphabetically, Unassigned last).
+// Deliberately not ordered by attainment: volume ordering is stable between
+// loads and does not turn the table into a ranking of people.
+
+let slaRange      = 'currentDay';   // same default as the Closed tab
+let slaPanelOpen  = null;           // 'tier' | 'sla' | null — one at a time
+let slaBusy       = false;
+let slaError      = '';
+let slaEverLoaded = false;
+
+// Both desks use the same 13 range keys, so "still the range on screen" does
+// not imply "still the desk on screen" — the epoch is part of the guard, the
+// same way closedStillCurrent() needs it.
+function slaStillCurrent(rangeKey, epoch) {
+  return rangeKey === slaRange && !projectStale(epoch);
+}
+
+async function loadSla(force) {
+  const rangeKey = slaRange;
+  const epoch = projectEpoch;
+  if (!force) {
+    const hit = closedCacheGet(rangeKey);
+    if (hit) { slaError = ''; renderSla(); return; }
+  }
+  if (force) closedCache.delete(rangeKey);
+  slaBusy = true; slaError = '';
+  renderSla();
+  try {
+    const page  = await fetchClosedPage(rangeKey, null);
+    const total = await fetchClosedTotal(rangeKey);
+    // Store under the range it was fetched FOR, and only if the desk has not
+    // changed — the cache is shared with the Closed tab, so a stale write
+    // here would poison that view too.
+    if (!projectStale(epoch)) {
+      closedCacheSet(rangeKey, { issues: page.issues, nextToken: page.nextToken, total, fetchedAt: Date.now() });
+    }
+  } catch (err) {
+    if (slaStillCurrent(rangeKey, epoch)) slaError = err.message;
+  } finally {
+    if (slaStillCurrent(rangeKey, epoch)) { slaBusy = false; renderSla(); }
+  }
+}
+
+// Pages the same cache entry the Closed tab pages, so anything fetched here
+// is already loaded over there and vice versa.
+async function loadMoreSla(all) {
+  const rangeKey = slaRange;
+  const epoch = projectEpoch;
+  const entry = closedCacheGet(rangeKey);
+  if (!entry || !entry.nextToken || slaBusy) return;
+  slaBusy = true; slaError = ''; renderSla();
+  try {
+    do {
+      const page = await fetchClosedPage(rangeKey, entry.nextToken);
+      entry.issues = entry.issues.concat(page.issues);
+      entry.nextToken = page.nextToken;
+      entry.fetchedAt = Date.now();
+      if (projectStale(epoch)) return;
+      closedCacheSet(rangeKey, entry);
+      if (slaStillCurrent(rangeKey, epoch)) renderSla();
+    } while (all && entry.nextToken && slaStillCurrent(rangeKey, epoch));
+  } catch (err) {
+    if (slaStillCurrent(rangeKey, epoch)) slaError = err.message;
+  } finally {
+    if (slaStillCurrent(rangeKey, epoch)) { slaBusy = false; renderSla(); }
+  }
+}
+
+// ── Controls ─────────────────────────────────────────────────────────────────
+function onSlaRangeChange(value) {
+  slaRange = value;
+  slaDrill = null;   // a different window is a different set of tickets
+  loadSla(false);
+}
+// The header's Refresh calls loadSla(true) directly — see REFRESH_BY_TAB.
+function toggleSlaPanel(which, e) {
+  e.stopPropagation();
+  slaPanelOpen = slaPanelOpen === which ? null : which;
+  renderSla();
+}
+// Closing a panel must remove it WITHOUT re-rendering the controls row, or it
+// swallows the click that closed it — see trap 5 in CLAUDE.md, found on the
+// Closed tab's identical pair of panels.
+function closeSlaPanelsOnOutsideClick() {
+  if (!slaPanelOpen) return;
+  slaPanelOpen = null;
+  collapseMultiSelectPanels(document.getElementById('sla-root'));
+}
+// Shared state with the Closed tab, so both views filter and count alike.
+function onSlaTierCheck(value, checked) {
+  if (checked) closedTacTiers.add(value); else closedTacTiers.delete(value);
+  renderSla();
+}
+function onSlaSlaCheck(field, checked) {
+  if (checked) selectedClosedSlas.add(field); else selectedClosedSlas.delete(field);
+  renderSla();
+}
+
+// ── SLA Breakdown: drilling into a cell ──────────────────────────────────────
+// Every number in the matrix is a count of real tickets, so every number opens
+// them. Without this the tab can tell you 57% and nothing about which four
+// tickets that was — and the four are the entire reason anyone reads the row.
+//
+// `slaDrill` is {row, col}: the row is an assignee name (or SLA_ALL_ROW for the
+// totals row), the col is 'closed', 'total', or one of the CLOSED_KPI_SLAS
+// field ids. Clicking the open cell again closes it. State is deliberately
+// plain and re-resolved on every render — the same pattern activeSubDrill and
+// the link drills already use — so a Load more, a tier change or a refresh
+// simply recomputes it rather than leaving a stale list on screen.
+const SLA_ALL_ROW = '\u0000all';   // cannot collide with a Jira display name
+let slaDrill = null;
+
+function toggleSlaDrill(row, col) {
+  slaDrill = (slaDrill && slaDrill.row === row && slaDrill.col === col) ? null : { row, col };
+  renderSlaTable();
+}
+function closeSlaDrill() { slaDrill = null; renderSlaTable(); }
+
+// What a given cell is counting, resolved against the CURRENT data rather than
+// remembered from the click. Returns null when the row has gone (a tier filter
+// change can remove a person) so the panel closes itself instead of showing a
+// list that no longer belongs to anything on screen.
+function slaDrillSet(groups, shown) {
+  if (!slaDrill) return null;
+  const { row, col } = slaDrill;
+  const isAll = row === SLA_ALL_ROW;
+  const tickets = isAll ? shown : groups.get(row);
+  if (!tickets || !tickets.length) return null;
+  const who = isAll ? 'All assignees' : row;
+
+  if (col === 'closed') {
+    return {
+      who, isAll,
+      label: 'Closed',
+      tickets,
+      breached: i => closedSlaState(i).breached.length > 0,
+      outcome: closedSlaCell,
+      note: 'Every ticket in this cell. Red rows missed at least one of the SLAs '
+          + 'currently selected in the SLA picker.',
+    };
+  }
+  if (col === 'total') {
+    const tot = closedSlaTotal(tickets);
+    return {
+      who, isAll,
+      label: 'SLA Total',
+      tickets,
+      breached: i => closedSlaState(i).breached.length > 0,
+      outcome: closedSlaCell,
+      note: tot.slaCount
+        ? (tot.slaCount === 1
+            ? `A ticket counts as met only if it met the one selected SLA. `
+            : `A ticket counts as met only if it missed none of the ${tot.slaCount} selected SLAs. `)
+          + `${tot.clean} of ${tot.total} met all; the `
+          + `${tot.breached} red row${tot.breached !== 1 ? 's' : ''} missed at least one.`
+        : 'No SLAs are selected, so nothing can be counted as breached. '
+          + 'Tick at least one in the SLA picker above.',
+    };
+  }
+  // A named SLA: the denominator is the tickets that actually carry that clock,
+  // which is what the cell's "N of M met" counts. Tickets with no cycle for it
+  // are excluded here for the same reason they are excluded there — but the
+  // note says how many, so the drill cannot quietly under-report the row.
+  const kpi = CLOSED_KPI_SLAS.find(k => k.field === col);
+  if (!kpi) return null;
+  const withData = tickets.filter(i => i.fields?.[kpi.field]);
+  if (!withData.length) return null;
+  const a = closedSlaAttainment(tickets, kpi.field);
+  return {
+    who, isAll,
+    label: kpi.label,
+    tickets: withData,
+    breached: i => slaEverBreached(i, kpi.field),
+    outcome: i => slaOutcomeBadge(i, kpi.field),
+    note: `${a.met} of ${a.withData} met this SLA`
+        + (a.noData ? ` · ${a.noData} ticket${a.noData !== 1 ? 's' : ''} carry no `
+                    + `${kpi.label.replace(/^SLA /, '')} clock and are not counted` : '')
+        + '.',
+  };
+}
+
+// Met/Breached for ONE named clock — a narrower answer than closedSlaCell(),
+// which reports across everything the SLA picker has selected.
+function slaOutcomeBadge(issue, field) {
+  if (!issue.fields?.[field]) return `<span style="color:var(--grey-300)">—</span>`;
+  return slaEverBreached(issue, field)
+    ? `<span class="badge badge-pill" style="background:var(--red-20);color:var(--aa-red)">`
+      + ico('circle-exclamation', 12) + 'Breached</span>'
+    : `<span class="badge badge-pill" style="background:var(--green-30);color:var(--aa-green)">`
+      + ico('circle-check', 12) + 'Met</span>';
+}
+
+function slaDrillPanel(groups, shown) {
+  const set = slaDrillSet(groups, shown);
+  if (!set) { slaDrill = null; return ''; }
+
+  // Breached first — the drill exists to interrogate a percentage, and the
+  // misses are what anyone is looking for — then newest close first inside
+  // each group, matching the Closed tab's own order.
+  const rows = set.tickets.slice().sort((a, b) => {
+    const ab = set.breached(a) ? 0 : 1, bb = set.breached(b) ? 0 : 1;
+    if (ab !== bb) return ab - bb;
+    return (Date.parse(b.fields?.resolutiondate || '') || 0) - (Date.parse(a.fields?.resolutiondate || '') || 0);
+  });
+  const breachedCount = rows.filter(set.breached).length;
+
+  const head = '<thead><tr><th>Key</th><th>Summary</th>'
+             + (set.isAll ? '<th>Assignee</th>' : '')
+             + '<th>Tier</th><th>SLA</th><th>Closed</th></tr></thead>';
+  const body = rows.map(i => `<tr data-ticket="${esc(i.key)}"${set.breached(i) ? ' class="row-breach"' : ''}>
+      <td><a class="t-key" href="${esc(JIRA_BASE + '/' + i.key)}" target="_blank" rel="noopener">${esc(i.key)}</a></td>
+      <td class="t-sum">${esc(i.fields?.summary || '—')}</td>
+      ${set.isAll ? `<td class="t-sm">${esc(assigneeName(i))}</td>` : ''}
+      <td class="t-sm">${esc(tacTierOf(i) || '—')}</td>
+      <td>${set.outcome(i)}</td>
+      <td class="t-sm">${fmtShortDateTime(i.fields?.resolutiondate)}</td>
+    </tr>`).join('');
+
+  return `<div class="drill" id="sla-drill">
+    <div class="drill-head">
+      <div class="drill-title">${ico('user', 12)}${esc(set.who)} · ${esc(set.label)}
+        <span class="drill-count">${rows.length.toLocaleString('en-GB')}</span>
+        ${breachedCount ? `<span class="drill-count" style="background:var(--red-20);color:var(--aa-red)">${breachedCount} breached</span>` : ''}
+      </div>
+      <button class="icon-btn" title="Close" onclick="closeSlaDrill()">${ico('xmark', 14)}</button>
+    </div>
+    <div class="sla-drill-note">${esc(set.note)}</div>
+    <div class="scroll-x"><table class="tbl">${head}<tbody>${body}</tbody></table></div>
   </div>`;
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+const SLA_THEAD = '<thead><tr><th>Assignee</th>'
+                + `<th>Closed <span class="sort-ind">${ico('chevron-down',9)}</span></th>`
+                + '<th>SLA Total</th>'
+                + CLOSED_KPI_SLAS.map(k => `<th>${esc(k.label)}</th>`).join('')
+                + '</tr></thead>';
+
+// A percentage with its denominator under it. Null reads as an em dash, never
+// as 0% — "nothing to measure" and "measured and missed" are different answers.
+function slaPctTd(pct, sub, drill) {
+  // `drill` is {row, col, live} — omitted only where there is nothing to open.
+  const on = drill && slaDrill && slaDrill.row === drill.row && slaDrill.col === drill.col;
+  const attrs = drill && drill.live
+    ? ` class="sla-cell${on ? ' is-drilled' : ''}" onclick="toggleSlaDrill(${jsAttr(drill.row)}, ${jsAttr(drill.col)})"`
+      + ` title="${on ? 'Hide' : 'Show'} the tickets behind this figure"`
+    : ' class="sla-cell-empty"';
+  return `<td${attrs}><div class="sla-pct" style="color:${slaPctColour(pct)}">${pct != null ? pct + '%' : '—'}</div>`
+       + `<div class="sla-sub">${esc(sub)}</div></td>`;
+}
+
+// One row of the matrix — used for both a person and the all-assignees total,
+// so the footer can never drift from the rows it sums.
+function slaMatrixRow(label, tickets, cls, rowKey) {
+  const key = rowKey || label;
+  const tot = closedSlaTotal(tickets);
+  const totSub = tot.slaCount === 0
+    ? 'no SLAs selected'
+    : `${tot.clean} of ${tot.total} met all` + (tot.noData ? ` · ${tot.noData} no data` : '');
+  const cells = CLOSED_KPI_SLAS.map(({ field }) => {
+    const a = closedSlaAttainment(tickets, field);
+    const sub = a.withData
+      ? `${a.met} of ${a.withData} met` + (a.noData ? ` · ${a.noData} no data` : '')
+      : 'no data';
+    // A clock no ticket in this row carries has nothing to list, so that one
+    // cell does not offer the click. Everything else does, including a 100%
+    // cell: "which tickets made it" is a fair question too.
+    return slaPctTd(a.pct, sub, { row: key, col: field, live: a.withData > 0 });
+  }).join('');
+  const countOn = slaDrill && slaDrill.row === key && slaDrill.col === 'closed';
+  return `<tr${cls ? ` class="${cls}"` : ''}>
+    <td class="sla-name">${esc(label)}</td>
+    <td class="t-sm sla-cell${countOn ? ' is-drilled' : ''}" onclick="toggleSlaDrill(${jsAttr(key)}, &quot;closed&quot;)"
+        title="${countOn ? 'Hide' : 'Show'} these tickets">${tickets.length.toLocaleString('en-GB')}</td>
+    ${slaPctTd(tot.pct, totSub, { row: key, col: 'total', live: tickets.length > 0 })}
+    ${cells}
+  </tr>`;
+}
+
+function renderSla() {
+  const el = document.getElementById('sla-root');
+  if (!el) return;
+  const entry = closedCacheGet(slaRange);
+
+  const rangeOptions = CLOSED_RANGES.map(r => {
+    const hint = closedRangeHint(r.key);
+    return `<option value="${r.key}"${r.key === slaRange ? ' selected' : ''}>`
+         + esc(r.label) + (hint ? ` (${esc(hint)})` : '') + `</option>`;
+  }).join('');
+
+  const tierPanel = TAC_TIER_OPTIONS.map(t => `<label class="tt-ms-option">
+           <input type="checkbox" ${closedTacTiers.has(t) ? 'checked' : ''} onchange="onSlaTierCheck('${t}', this.checked)">
+           <span>${esc(t)}</span>
+         </label>`).join('');
+  const slaPanel = CLOSED_SLA_OPTIONS.map(f => `<label class="tt-ms-option">
+           <input type="checkbox" ${selectedClosedSlas.has(f) ? 'checked' : ''} onchange="onSlaSlaCheck('${f}', this.checked)">
+           <span>${esc(SLA_FIELD_NAMES[f] || f)}</span>
+         </label>`).join('');
+
+  el.innerHTML = `
+    <div class="priority-controls">
+      <label class="pc-label" for="sla-range">Closed</label>
+      <div class="pc-select-wrap">
+        <select class="pc-select" id="sla-range" onchange="onSlaRangeChange(this.value)">${rangeOptions}</select>
+        ${ico('chevron-down', 10)}
+      </div>
+      ${msPanelHtml('tier', closedTierButtonLabel(), tierPanel, slaPanelOpen === 'tier', 'toggleSlaPanel')}
+      ${msPanelHtml('sla', closedSlaButtonLabel(), slaPanel, slaPanelOpen === 'sla', 'toggleSlaPanel')}
+      <span class="priority-summary" id="sla-summary"></span>
+    </div>
+    ${slaError ? errorHtml(slaError) : ''}
+    <div id="sla-table"></div>`;
+
+  if (!entry) {
+    document.getElementById('sla-table').innerHTML = slaBusy
+      ? '<div class="loading-state"><div class="spinner"></div><span>Loading closed tickets…</span></div>'
+      : (slaError ? '' : '<div class="empty">No data loaded.</div>');
+    return;
+  }
+  renderSlaTable();
+}
+
+function renderSlaTable() {
+  const table   = document.getElementById('sla-table');
+  const summary = document.getElementById('sla-summary');
+  if (!table) return;
+  const entry = closedCacheGet(slaRange);
+  if (!entry) return;
+
+  const shown = entry.issues.filter(closedMatchesTacTier);
+  const rangeLabel = CLOSED_RANGE_BY_KEY[slaRange]?.label || '';
+  const more = !!entry.nextToken;
+  const pager = closedPagerHtml(entry, slaBusy, 'loadMoreSla',
+    `${closedLoadedNote(entry)}. Every percentage below is over what is loaded, not the whole range.`);
+
+  const groups = new Map();
+  for (const i of shown) {
+    const name = assigneeName(i);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(i);
+  }
+  // Busiest first, Unassigned always last, ties alphabetical.
+  const rows = [...groups.entries()].sort((a, b) => {
+    if ((a[0] === 'Unassigned') !== (b[0] === 'Unassigned')) return a[0] === 'Unassigned' ? 1 : -1;
+    return b[1].length - a[1].length || a[0].localeCompare(b[0]);
+  });
+
+  if (summary) {
+    summary.textContent =
+      `${shown.length.toLocaleString('en-GB')} closed ticket${shown.length !== 1 ? 's' : ''}`
+      + ` · ${rows.length} assignee${rows.length !== 1 ? 's' : ''}`
+      + ` · ${rangeLabel.toLowerCase()}`
+      + (more ? ' · percentages cover what is loaded' : '');
+  }
+
+  if (!rows.length) {
+    const msg = closedTacTiers.size === 0
+      ? 'No TAC Tier selected. Check at least one tier above to see the breakdown.'
+      : entry.issues.length
+        ? 'No closed tickets match the current filters.'
+        : `No tickets were closed in the selected range (${esc(rangeLabel.toLowerCase())}).`;
+    table.innerHTML = `<div class="empty">${msg}</div>` + pager;
+    return;
+  }
+
+  // The all-assignees row is the same call over the same array the tab is
+  // showing, so it matches the Closed tab's tiles for the same range and
+  // filters exactly.
+  const body = rows.map(([name, tickets]) => slaMatrixRow(name, tickets)).join('')
+             + slaMatrixRow('All assignees', shown, 'sla-row-all', SLA_ALL_ROW);
+  // The drill panel sits between the matrix and the pager: it belongs to a
+  // figure above it, and the pager's note about a partial load applies to both.
+  table.innerHTML = `<div class="scroll-x"><table class="tbl">${SLA_THEAD}<tbody>${body}</tbody></table></div>`
+                  + slaDrillPanel(groups, shown) + pager;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3177,7 +3534,7 @@ async function loadVendor(force) {
     if (!projectStale(epoch)) { vendorBusy = false; renderVendor(); }
   }
 }
-function onVendorRefresh() { loadVendor(true); }
+// The header's Refresh calls loadVendor(true) directly — see REFRESH_BY_TAB.
 
 // ── Render ───────────────────────────────────────────────────────────────────
 const VENDOR_THEAD = '<thead><tr><th>Key</th><th>Summary</th><th>Status</th>'
@@ -3242,13 +3599,8 @@ function renderVendor() {
   const el = document.getElementById('vendor-root');
   if (!el) return;
   el.innerHTML = `
-    ${personalBanner()}
     <div class="priority-controls">
       <span class="pc-label">Waiting on the vendor</span>
-      ${(personalMode && personalUser) ? `<span class="pm-chip">${ico('user',11)}Your tickets only</span>` : ''}
-      <button class="cl-btn" onclick="onVendorRefresh()"${vendorBusy ? ' disabled' : ''} title="Re-query Jira for vendor bugs">
-        <span>${vendorBusy ? 'Refreshing…' : 'Refresh'}</span>
-      </button>
       <span class="priority-summary" id="vendor-summary"></span>
     </div>
     ${vendorError ? errorHtml(vendorError) : ''}
@@ -3269,7 +3621,7 @@ function renderVendorTable() {
     return;
   }
 
-  const shown = personalFilter(vendorIssues);
+  const shown = vendorIssues;
   const [tagged, awaiting] = vendorSections(shown);
   if (summary) {
     summary.textContent = `${shown.length} ticket${shown.length !== 1 ? 's' : ''} with the vendor · `
@@ -3281,8 +3633,7 @@ function renderVendorTable() {
     // Say WHICH reason it is empty. On the ANZ desk the answer is "that field
     // is not used there at all" (0 tickets carry a Third Party Status of any
     // value, checked 9 Sep 2026), which reads as broken unless it says so.
-    const who = (personalMode && personalUser) ? ' assigned to you' : '';
-    table.innerHTML = `<div class="empty">No tickets${who} are with the vendor on `
+    table.innerHTML = `<div class="empty">No tickets are with the vendor on `
       + `${esc(currentProject().name)}.<br>This list needs Third Party Status set to something `
       + `other than “${esc(VENDOR_EXCLUDED_STATUS)}”.</div>`;
     return;
@@ -3852,6 +4203,27 @@ function openAssigneeDrill(rowEl, name) {
   document.getElementById('panel-row-2').insertAdjacentElement('afterend', panel);
 }
 
+// ── Reopened ─────────────────────────────────────────────────────────────────
+// Tickets that were resolved and then pushed back into a live status: they
+// still carry a resolution, but their status is not a finished one.
+//
+// This CANNOT be derived from RAW_ISSUES. The live pull says
+// `resolution = Unresolved`, which is precisely what these tickets are not —
+// before this tile they appeared in no view at all (see the same note on the
+// Closed list, which excludes them from the other side).
+//
+// `statusCategory != Done` rather than `status not in (Closed, Resolved)`:
+// those two are the only finished statuses in use today and both forms return
+// the same rows on both desks (checked 14 Sep 2026 — UK 3, ANZ 35), but
+// statusCategory is Jira's own answer to "is this finished" and survives a
+// renamed or newly added done status, the way `isLinkDone()` already does it.
+// TP_FILTER is applied for consistency with every other live-queue query; it
+// excludes none of these today.
+function reopenedJql() {
+  return `project = ${projectKey} AND statusCategory != Done `
+       + `AND resolution is not EMPTY AND ${TP_FILTER} ORDER BY updated DESC`;
+}
+
 async function loadLive() {
   const epoch = projectEpoch;
   try {
@@ -3869,7 +4241,18 @@ async function loadLive() {
       LIVE_FIELDS
     );
     if (projectStale(epoch)) return;
+    // Reopened runs as its own query (see reopenedJql above) and is fetched
+    // BEFORE the first paint so the tile never has to be re-rendered under the
+    // user. Non-fatal: a failure here costs that one tile, not the whole tab —
+    // the same call the Closed list's pager makes for /api/count.
+    let reopened = null, reopenedErr = '';
+    try {
+      reopened = await jiraSearch(reopenedJql(), LIVE_FIELDS);
+    } catch (e) { reopenedErr = e?.message || 'Reopened query failed'; }
+    if (projectStale(epoch)) return;
     RAW_ISSUES = open;
+    rawReopened = reopened;
+    reopenedError = reopenedErr;
     recomputeViews();
     render(ALL_ISSUES);
     // Fetch today tickets for wallboard (sequential to avoid race condition)
@@ -3888,6 +4271,27 @@ async function loadLive() {
     document.getElementById('root').innerHTML=errorHtml(err.message);
     document.getElementById('priority-root').innerHTML=errorHtml(err.message);
   }
+}
+
+// The Reopened tile. Its own helper because it is the one tile whose number
+// does not come from the array render() was handed — and because it has a
+// third state: no array at all, when its query failed. In that state it is
+// deliberately NOT clickable, since an empty drill would read as "none" rather
+// than "not known".
+function reopenedTile(arrow) {
+  const list = reopenedIssues;
+  if (!list) {
+    return `<div class="tile">
+        <div class="tile-header">Reopened</div>
+        <div class="tile-count">—</div>
+        <div class="tile-sub">${esc(reopenedError ? 'Count unavailable' : 'Loading…')}</div>
+      </div>`;
+  }
+  return `<div class="tile" data-drill="reopened" onclick="openDrill('reopened')">
+      <div class="tile-header">Reopened ${arrow}</div>
+      <div class="tile-count">${list.length}</div>
+      <div class="tile-sub">Resolved, then back in a live status</div>
+    </div>`;
 }
 
 function render(issues) {
@@ -3917,13 +4321,13 @@ function render(issues) {
   const flag = n => `<span class="tile-flag">${ico('triangle-exclamation',11)}${n} under 1h</span>`;
 
   document.getElementById('root').innerHTML=`
-    ${personalBanner()}
     <div class="tile-row">
       <div class="tile" data-drill="total" onclick="openDrill('total')">
         <div class="tile-header">Total open ${arrow}</div>
         <div class="tile-count">${total}</div>
         <div class="tile-sub">Across all statuses</div>
       </div>
+      ${reopenedTile(arrow)}
       <div class="tile" data-drill="action" onclick="openDrill('action')">
         <div class="tile-header">Needs action ${arrow}</div>
         <div class="tile-countline"><span class="tile-count">${att}</span>${attUrgent>0?flag(attUrgent):''}</div>
@@ -4090,18 +4494,11 @@ function destroyWbCharts() {
 
 function renderWallboard() {
   if (document.getElementById('view-wall').style.display === 'none') return;
-  if (!ALL_ISSUES.length) {
-    // RAW empty means the fetch hasn't landed yet — leave the spinner alone.
-    // RAW populated but view empty means Personal mode filtered everything out,
-    // and showing the previous unfiltered board would be a lie.
-    if (RAW_ISSUES.length) {
-      destroyWbCharts();
-      const who = personalUser?.name || 'you';
-      document.getElementById('wb-root').innerHTML =
-        `<div class="loading-state"><span>No open tickets assigned to ${esc(who)}.</span></div>`;
-    }
-    return;
-  }
+  // Nothing fetched yet — leave the spinner alone. There is no longer any way
+  // for the view array to be empty while RAW_ISSUES has rows (Personal mode was
+  // the only filter between them), so an empty queue and an unfinished fetch
+  // are the same state here.
+  if (!ALL_ISSUES.length) return;
 
   destroyWbCharts();
 
@@ -4142,7 +4539,6 @@ function renderWallboard() {
         <span class="wb-mark">${brandMark(30)}</span>
         <span class="wb-title">${esc(currentProject().name)}</span>
         <span class="wb-badge">Live wallboard</span>
-        ${(personalMode && personalUser) ? `<span class="wb-personal">${ico('user',12)}${esc(personalUser.name || 'Personal')} only</span>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <button class="ar-btn${arOn?' is-on':''}" id="wb-ar-btn" onclick="toggleAutoRefresh()">
@@ -4217,6 +4613,69 @@ function renderWallboard() {
   });
 }
 
+// ── Manual refresh ───────────────────────────────────────────────────────────
+// ONE button, in the header next to auto-refresh, rather than one per tab.
+// It re-queries whatever view is on screen — which is the only sensible
+// meaning for a control that is always visible, and it makes the two refresh
+// controls (manual and automatic) sit together instead of being hunted for
+// inside a tab's own controls row.
+//
+// Three tabs used to carry their own `Refresh`: Closed, SLA Breakdown and
+// Vendor Bugs. Those are gone, and this replaces them — a second button doing
+// the same job a few pixels lower is how two controls start disagreeing.
+//
+// Being in the header also puts it out of reach of trap 5: the tab renderers
+// replace their own controls row, but never the header, so a click here with
+// a multi-select panel open both closes the panel (the document listener) and
+// fires the refresh. The old in-row button had to be checked for exactly that.
+//
+// Note what it deliberately does NOT do: refresh everything. Re-querying five
+// views because someone wanted today's closed list again would be several
+// seconds of Jira for data nobody is looking at. `what` names the target in
+// the tooltip so there is no doubt which one moved.
+const REFRESH_BY_TAB = {
+  live:     { what: 'the live queue',        run: () => loadLive() },
+  priority: { what: 'the live queue',        run: () => loadLive() },
+  closed:   { what: 'the Closed list',       run: () => loadClosed(true) },
+  vendor:   { what: 'Vendor Bugs',           run: () => loadVendor(true) },
+  hist:     { what: "this week's figures",   run: () => loadHistorical() },
+  sla:      { what: 'the SLA Breakdown',     run: () => loadSla(true) },
+  // The header is hidden on the wallboard, so this is unreachable by click —
+  // kept so the lookup can never fall through to a wrong view.
+  wall:     { what: 'the wallboard',         run: () => loadLive() },
+};
+let refreshBusy = false;
+
+function refreshJob() { return REFRESH_BY_TAB[activeTab] || REFRESH_BY_TAB.live; }
+
+async function refreshActiveTab() {
+  if (refreshBusy) return;          // the button is disabled too; this covers a double dispatch
+  refreshBusy = true;
+  paintRefreshBtn();
+  try {
+    // Every loader handles its own errors and paints its own error box, so
+    // this await settles either way; the finally is what guarantees the
+    // button comes back rather than sticking on "Refreshing…".
+    await refreshJob().run();
+  } finally {
+    refreshBusy = false;
+    paintRefreshBtn();
+  }
+}
+
+function paintRefreshBtn() {
+  const btn = document.getElementById('refresh-btn');
+  const lbl = document.getElementById('refresh-label');
+  if (!btn || !lbl) return;
+  const job = refreshJob();
+  lbl.textContent = refreshBusy ? 'Refreshing\u2026' : 'Refresh';
+  // Disabled plus the "Refreshing…" label is the whole busy state. Deliberately
+  // NOT the .is-on class: that is auto-refresh's teal "armed" look, and the two
+  // buttons sit side by side, so borrowing it would say the wrong thing.
+  btn.disabled = refreshBusy;
+  btn.title = refreshBusy ? `Refreshing ${job.what}\u2026` : `Re-query Jira for ${job.what}`;
+}
+
 // ── Auto-refresh ──────────────────────────────────────────────────────────────
 let autoRefreshInterval = null;
 let autoRefreshCountdown = null;
@@ -4263,21 +4722,18 @@ function stopAutoRefresh() {
 paintChrome();
 document.addEventListener('click', closeTacTierPanelOnOutsideClick);
 document.addEventListener('click', closeClosedPanelsOnOutsideClick);
+document.addEventListener('click', closeSlaPanelsOnOutsideClick);
 document.addEventListener('click', onTicketRowClick);
 document.addEventListener('keydown', onDetailKeydown);
 // Identity resolves BEFORE the first fetch, because JIRA_BASE (every ticket's
 // browse link) comes out of the same /api/me call. One extra round-trip up
 // front, against a loadLive() that already makes several paginated calls —
 // cheap next to rendering a whole table of links pointing at the wrong site.
-// It is memoised, so the Personal mode restore below reuses it rather than
-// re-fetching. A failure here is non-fatal: JIRA_BASE keeps its fallback and
-// togglePersonalMode reports the problem in its own error state.
+// A failure here is non-fatal: JIRA_BASE keeps its fallback, and the first
+// /api/search will surface an expired session anyway.
 loadIdentity()
   .catch(() => {})
-  .then(() => {
-    loadLive();
-    if (personalPrefLoad()) { togglePersonalMode(true); }
-  });
+  .then(() => { loadLive(); });
 </script>
 </body>
 </html>
