@@ -11,7 +11,10 @@ code is the way it is** and **the facts that were expensive to establish**.
 
 ## 1. What this is
 
-A read-only dashboard over the Access4 TAC service desk queues. It began as a
+A dashboard over the Access4 TAC service desk queues — read-only towards Jira
+always, and writing only two things anywhere, each its own SQLite file: Ticket
+QA's (section 5c), which holds ticket keys and QA answers and no customer data,
+and the Skills Matrix's (section 5d), which holds the team's product ratings. It began as a
 Claude Cowork artifact, was ported to the Claude Artifacts platform, and was
 then rebuilt as this standalone site so people without Claude accounts could
 use it.
@@ -21,13 +24,15 @@ UK queue (Jira project `TAC`) and the ANZ queue (`TAPC`) — added 8 Sep 2026,
 see "The desk switcher" in section 8. Everything below applies to whichever
 desk is selected; where the two differ, it says so.
 
-Seven views. The Live queue, Priority list and Wallboard all read one shared
+Nine views. The Live queue, Priority list and Wallboard all read one shared
 fetch of open tickets; **Closed, Historical and Vendor Bugs each run their own
 query** (sections 5, 6 and the Historical notes). The Live queue has **one
 extra query of its own** — the Reopened tile, whose tickets are by definition
 absent from that shared fetch (section 5a). **SLA Breakdown adds no query at
 all**: it is the Closed list's data, its cache and its arithmetic, presented
-as a per-assignee matrix (section 5b).
+as a per-assignee matrix (section 5b). **Ticket QA runs one pull of solved
+tickets per period and then reads only its own store** (section 5c). **The
+Skills Matrix makes no Jira call at all** (section 5d).
 
 | View | What it shows |
 |---|---|
@@ -37,6 +42,8 @@ as a per-assignee matrix (section 5b).
 | Vendor Bugs | Tickets the vendor has taken on, split into Version Tagged and Awaiting Dev (section 6) |
 | Historical | Week-by-week created/resolved, SLA attainment, CSAT |
 | SLA Breakdown | The Closed tab's SLA summary as a matrix, one row per assignee (section 5b) |
+| Ticket QA | Score solved tickets against the QA rubric, per agent or as an all-agent baseline; history of completed QAs (section 5c) |
+| Skills Matrix | The UK team's 0–5 product skills matrix, editable inline, with History, Baseline and Settings behind buttons (section 5d) |
 | Wallboard | Full-screen KPI view for a TV |
 
 Clicking any ticket row in any of those lists opens a **history timeline**
@@ -221,6 +228,24 @@ membership, so an unseen 4th value or a null wouldn't be silently dropped).
   382 in the last 90 days, 226 in Jul–Sep, 25 in the last 7 days, 4 today.
   This asymmetry is the entire reason the Closed list is paged rather than
   fetched whole — don't "simplify" that away.
+- **Correction, 24 Sep 2026: the migration resolution is NOT named "Historical
+  TAC ticket resolved during migration".** It is named plain **`Resolved`**
+  (id `10038`); that sentence is only its *description*. And ordinary tickets
+  closed today carry the **same id 10038** (27 of the 50 closed in the month to
+  24 Sep 2026), so the resolution **cannot** tell a migrated ticket from a real
+  one. What can is **`created`**: every import ticket was created in a few
+  hours on the desk's migration day.
+  - UK `TAC`: all imports created 03:00–12:51 AEST on **4 May 2026** (last at
+    02:51Z); the first organic ticket, TAC-5366, at 00:21Z on 5 May.
+  - ANZ `TAPC`: imports in batches from **2 Jul 2026** to 05:46 AEST on
+    **6 Jul** (19:46Z on 5 Jul); organic tickets with owners from 21:52Z. ANZ
+    holds 15,915 Done tickets in all, mostly imports.
+  - Import tickets have no TAC Owner, or the import's own account **"A4
+    Integration"** (`712020:34e201de-…`) as the 1.5 owner.
+
+  These are `goLive` in `PROJECTS`. Measured against live Jira: Last Quarter on
+  the UK desk is **5,227** Done tickets, and **240** once `created` is bounded
+  at go-live.
 - **`TP_FILTER` excludes nothing from the closed set** — 387 of 387 over 90
   days. It is kept for consistency with the other views, and would start
   mattering silently if the Third Party Status values changed.
@@ -652,10 +677,16 @@ Three things about the numbers:
   matters for Response Target, the one SLA that runs repeatedly (15 of 47
   tickets had more than one cycle) — and measured per-cycle that sample gave
   72% as well, the same answer.
-- **When the pager has rows left to fetch, every tile describes the loaded
-  slice**, not the whole range. The Total closed tile says so
-  ("current day · 100 of 5,225 loaded") rather than leaving it to the pager
-  line further down.
+- **When the pager has rows left to fetch, the strip shows no figures at
+  all** (changed 25 Sep 2026). It used to show tiles over the loaded slice
+  with a "100 of 5,225 loaded" caveat, which read as a whole-range summary.
+  Now `closedKpiPartialHtml()` replaces the tiles with a yellow notice: loaded
+  vs total, a "may take a while" warning above `CLOSED_KPI_SLOW_LOAD` (500) or
+  when `/api/count` failed, and a button that calls `loadMoreClosed(true)`.
+  That walk repaints per page, so the button counts up ("Loading… 600 of
+  650") and the tiles appear once `nextToken` is null. The SLA Breakdown tab
+  is **not** changed — it still shows its matrix over the loaded slice with
+  its own disclosure (section 5b).
 
 `slaPctColour()` (>=90 green, >=70 amber, else red) is shared with the
 Historical tab's "SLA met" tile so the thresholds cannot drift apart. Live
@@ -849,6 +880,254 @@ double as the numbers to expect when checking the tab still works:
 Per-person the spread is wide — 100% across the board on 13 tickets at one
 end, 0% SLA Total on 1 ticket at the other — which is the whole reason the
 breakdown was asked for.
+
+## 5c. Ticket QA
+
+Added 24 Sep 2026. Score solved tickets against the business's QA rubric
+(`TAC_Ticket_QA_Rubric.md`, supplied that day) and keep the answers. The tab
+sits between SLA Breakdown and Wallboard, with its own Start / Review /
+History switch. **Reporting was explicitly deferred** — this is the ability to
+run QAs and see what has been done, plus the one summary a baseline needs.
+
+**The rubric lives in `qa-rubric.js` and nowhere else.** The server validates
+and scores every review against it; the page renders its form from
+`GET /api/qa/rubric`. There is an assertion that the page carries no second
+copy of the anchor text. `RUBRIC_VERSION` is stored on every review, so bump it
+if the rubric changes.
+
+**The rules it enforces, all from the rubric:** each of 12 criteria is 0, 1, 2
+or N/A; N/A only on the five with an N/A rule (**1, 3, 4, 8, 11**); a review with
+anything unanswered is refused, not stored half-done; score = (sum ÷ 2) ÷
+applicable × 100, and all-N/A is "no score", never 0%; a critical fail
+(yes/no, which of the four, and a reason) makes the result FAIL but **the
+percentage is still kept**; "One thing to improve" is required. The server
+recomputes the score whatever the browser sends, and a suite checks the
+browser's live copy of the formula agrees with it across 2,000 random reviews.
+
+### Where tickets come from
+
+**One Jira pull per desk + period, then everything is in memory.** "Do another
+ticket" draws from the pool already loaded, so ten QAs in a row cost one query
+(verified: eight in a row, zero Jira queries — only the per-ticket detail and
+comments). The pool is `QA_POOL_FIELDS` — `created`, `resolutiondate` and the
+three owner fields, nothing else, because page size shrinks with field count.
+Up to four periods are kept; Refresh does **not** re-query the pool (it reloads
+history from the store), and the tab's own Re-fetch button does.
+
+**"Solved" is `statusCategory = Done`,** the same rule as the Closed list, with
+the same 13 periods (`CLOSED_RANGES`). **No `TP_FILTER`**: tickets parked with
+a vendor are exactly where escalation handling (criterion 11) gets tested, and
+on closed tickets the filter excludes nothing anyway (section 2).
+
+**The agent is a TAC Owner, not the assignee** — the business's rule, because
+the owner fields record someone who touched a ticket and escalated late, and
+`assignee` only records the last holder (they differ on 9 of 50 recent
+tickets). A ticket belongs to everyone who appears in any of the three
+fields; `ownerRole` records every tier that person held it at (`"1.5,2.0"`).
+The import account "A4 Integration" and any `accountType: 'app'` are never
+agents (`QA_NON_AGENT_IDS`, keyed by account id). A ticket with no owner is
+never drawn.
+
+**Migration tickets are excluded by `created`, twice.** The JQL carries
+`created >= -Nm`, minutes since the desk's `goLive`, rounded down so the bound
+is never before it. Relative minutes, **not a date literal**: a literal is read
+in the viewer's Jira timezone (section 5) and would shift the cutoff by up to a
+day between a UK and an ANZ reviewer, which on the UK desk's migration morning
+is the difference between 0 and ~5,000 import tickets. Validated against live
+Jira (5,227 → 240 on Last Quarter). The browser then re-checks the exact
+instant on every row, which is what catches an import ticket that happens to
+carry a real agent as owner (there is one in the harness for that reason).
+
+### Never twice
+
+**A ticket with a completed QA is never drawn again — for anyone.** The pool
+is shared, so QA'ing a ticket that Alisha owned at 1.5 and John at 2.0 takes it
+out of both their pools; the agents table's "Taken" column shows it. The
+guarantee is the database's: `qa_reviews.issue_key` and `qa_skips.issue_key`
+are `UNIQUE`, and the route answers 409. The browser's exclusion list
+(`/api/qa/excluded`, re-read with every pool fetch) is only a convenience on
+top — two reviewers on two machines cannot double-QA a ticket.
+
+Tickets planned into an **open baseline are reserved** too, so a single-agent
+draw cannot take one mid-baseline. Ending a baseline releases them.
+
+**Skip** exists because the pool contains tickets nobody should score (junk,
+duplicates, nothing the agent did). It needs a reason, is recorded, is shown in
+History, and removes the ticket from every future draw — the rubric says
+reviewers do not choose their tickets, and a silent re-draw would let them.
+
+### Baselines
+
+Same number of random tickets for **every agent in the period**. Tickets
+shared between agents are dealt out, not counted twice, so `qaPlanBaseline()`
+draws for the agents with **fewest** options first — the scarce tickets land
+where there is no alternative.
+
+When someone is short of the per-agent count, **the reviewer chooses**
+(business call, 24 Sep 2026): **cap** everyone at the smallest share, or
+**leave out** the short agents. Agents with nothing drawable are always left
+out. Dealing shared tickets can make someone short even when their own count
+was enough, and cap mode steps the cap down and redraws rather than dropping
+them — found by the suite, where the first version quietly excluded an agent
+whose tickets had all gone to a colleague. The plan, including who was left
+out, is stored, so a baseline survives a reload and resumes from History.
+
+A baseline review is **scored for the agent the plan assigned**, whatever the
+browser sends: otherwise one person could quietly end up with seven tickets
+and another with three. After a skip, the same agent gets a replacement from
+the pool (only up to the per-agent count). Progress counts reviews against
+planned-minus-skipped, so a skip and its replacement are one slot ("1 of 8"
+either side of a skip).
+
+The **baseline summary** is the mean score of the scored reviews with the
+**critical-fail rate beside it, never folded in** (rubric rule 8), the
+department average on each criterion on the rubric's 0–2 scale over the reviews
+where it applied (what an individual is later judged against), and one row per
+agent — alphabetical, not ranked, for the same reason the SLA matrix is ordered
+by volume.
+
+### What is stored — and what is not
+
+**Only ticket keys, the agent (staff account id + name), and the QA answers.**
+No summary, description, comment, organisation or requester: those are
+fetched live for the review screen and dropped with the page. Five tables
+(`qa_sessions`, `qa_session_items`, `qa_reviews`, `qa_scores`, `qa_skips`); no
+column that could hold ticket content exists, and the store accepts only
+allow-listed fields. Checked by grepping the database file after a browser run
+for every piece of ticket text the review screen displayed — zero hits. The two
+free-text fields (critical-fail reason, one thing to improve) are the
+reviewer's own words, and the form says to keep customer details out of them.
+
+**No reviewer identity is stored** — asked and declined 24 Sep 2026. `SCOPES`
+has no `read:me`, so the app cannot tell who is signed in; adding it changes
+the consent screen and every session re-authorises (section 8). Any signed-in
+viewer can run QAs.
+
+**Storage is `node:sqlite`**, Node's built-in module, so no dependency and no
+build step; it needs Node 22.13+ unflagged (hence the `engines` bump). One file
+at `QA_DB_PATH` (default `./data/qa.sqlite`, git-ignored; `/app/data` volume in
+Docker). **It is the only copy** — README says how to back it up. WAL mode, one
+writer; replicas would need a real database.
+
+### The review screen
+
+Left: the ticket as the reviewer needs to read it — facts, **description**
+(`description` was added to `DETAIL_FIELDS` for this), the **conversation**,
+and collapsed history and SLA clocks. Right: the form, sticky, with the three
+anchors as the options themselves and a live score / PASS-FAIL bar.
+
+Comments come from a new route, `/api/issue/:key/comment`, paged like the
+changelog. **`jsdPublic` splits public replies from internal notes** — the
+rubric scores "customer communication" and "internal documentation"
+separately, so the screen badges and tints them apart. The MCP connector does
+not return that field; the REST endpoint does, so it is **unverified against
+real data** — if every comment reads "Visibility unknown", that is why.
+
+Descriptions and comments are ADF; `adfHtml()` walks it and **escapes every
+string it emits**, and only `http(s)` becomes an `href` (the same rule as
+`vendorUrlCell()`). An unknown node renders its children, so text is never
+silently lost.
+
+**Trap 5, applied up front:** scoring a criterion never re-renders the form.
+The handlers update `qaDraft` and patch the score bar in place, and the Save
+button's attributes are patched rather than the element replaced, so the blur
+from clicking Save cannot swallow the click. Text boxes use `input`, not
+`change`. **Trap 6:** every loader awaits into locals and checks
+`projectEpoch` before assigning (verified with a 1.5s pool fetch and a desk
+switch 200ms in). A desk switch with an unsaved, half-scored QA **asks first**
+— the only thing on the page that is the viewer's own unsaved work.
+
+## 5d. The Skills Matrix
+
+Added 25 Sep 2026. Replaces the "UK Product Skills Matrix" spreadsheet
+(OneDrive, `4. Operations`). People down the side, products across the top,
+0–5 in every cell, coloured exactly as the sheet's conditional formatting
+(`.sk-l0`–`.sk-l5`). The tab sits between Ticket QA and Wallboard.
+
+**The workbook's three sheets are the tab's three views.** Sheet1 is the
+matrix; *Changes* is **History** (a button); *Baseline* is **Baseline** (a
+button). Adding and archiving people and products is behind **Settings**. Each
+button toggles: pressing it again returns to the matrix.
+
+**No Jira at all, and people are NOT Jira users** — the business's rule. A
+person is a name in `skills_people`; nothing links them to an account id.
+
+**UK only, on either desk** — asked and chosen 25 Sep 2026. Nothing is keyed
+by project; a desk switch only repaints the tab (the summary line says "the
+same matrix on either desk" on ANZ).
+
+**Two edit rules, both the business's:**
+
+- **A matrix change asks where it was confirmed.** Choosing a new value opens
+  a dialog with the old → new chips, a required **Confirmed** field (a
+  `<datalist>` of values already used, most-used first — "Teams Message" today)
+  and a **Date** defaulting to today (London). Save writes the cell and a
+  `skills_changes` row together; Cancel, Escape or a scrim click puts the cell
+  back. The request carries `from`, and the store refuses with 409
+  `stale_rating` if the cell no longer holds it — two people editing one cell
+  cannot silently overwrite each other or record a transition that never
+  happened. The page then reloads the matrix and says so. (`httpError()` now
+  keeps the server's own code as `err.bodyCode` for exactly this.)
+- **A baseline change saves immediately and is NOT recorded** — asked
+  25 Sep 2026: the baseline is being corrected, not a skill changing. The
+  History panel says as much.
+
+**History has From / To / Agent / Product filters** (added 25 Sep 2026), all
+in the browser over the one history fetch. The dates are the *confirmed* date,
+inclusive at both ends. Agent and product are matched by id and listed from
+the history rows themselves — so someone archived since still appears, and
+anyone with no changes yet does not. A filter change repaints only the table
+and the "N of M changes" count, never the controls, so typing a date keeps its
+focus (trap 5). The filters last while the page is open and are not saved.
+
+**The small +N / −N in a cell is the live value against the baseline**, on
+both views. The cell tooltip names the level's description.
+
+**Archive, never delete** (chosen 25 Sep 2026). Archived people and products
+disappear from the matrix but keep every rating and history row; Restore brings
+them back exactly as they were, and adding a name that is archived says so
+rather than a bare "duplicate". Names are unique ignoring case. A new person or
+product starts at **0 everywhere in both the matrix and the baseline**, so a
+row is never partial; archived rows are filled too, so a restore has no holes.
+History rows copy the names as well as the ids, so they read as written.
+
+**Cells are native `<select>`s**, styled as the coloured squares. Keyboard and
+screen-reader behaviour for free, and no document-level listener to fall into
+trap 5. One consequence: on a *closed* select an arrow key commits a new value
+immediately, so a keyboard user gets the confirm dialog on the first arrow
+press — Cancel is the answer if it was the wrong one. A re-render keeps the
+matrix's horizontal scroll and puts focus back on the edited cell.
+
+**The data came from the workbook once**, via `skills-import.js` over a JSON
+export (reading `.xlsx` would need a dependency nothing else uses). Two things
+about that import, both the business's calls:
+
+- The *Changes* sheet wrote **"John V"**; the import renamed it to **John
+  Vallestero**, the name used everywhere.
+- The two history rows (John Clyde and John Vallestero, SMS Gateway 1 → 2,
+  Teams Message, 22 Sep 2026) were imported as they were. Note **John
+  Vallestero's SMS Gateway baseline is 0**, so a 0 → 1 step is missing from
+  the history; it was not invented.
+
+Also imported verbatim: the scale's six descriptions, typos included
+(`SKILL_LEVELS` in `skills-store.js`, the only copy — the page renders the
+legend from `GET /api/skills`). The import refuses to run into a store with
+anyone in it. The workbook itself is now superseded; edits there no longer
+reach the dashboard.
+
+**Access**: any signed-in viewer can edit, and no editor is recorded — the
+same model as Ticket QA, for the same reason (no `read:me`, section 8).
+History records where a change was *confirmed*, not who typed it in.
+
+**Storage**: `SKILLS_DB_PATH` (default `./data/skills.sqlite`, git-ignored;
+`/app/data` volume in Docker), a separate file from QA's so neither can damage
+the other. Five tables: `skills_people`, `skills_products`, `skills_ratings`,
+`skills_baseline`, `skills_changes`. Every write returns the whole state —
+tens of rows — so the page never merges partial updates.
+
+**The tab strip scrolls horizontally** (`.tabs{overflow-x:auto}`) since this,
+the ninth tab: at ~800px the strip was already wider than the window and
+pushed the whole page sideways.
 
 ## 6. Vendor Bugs
 
@@ -1725,12 +2004,265 @@ now been *rendered* on both desks against real issues, but through the stub,
 so the proxy path is still the untested part. Nor is it known whether those
 two custom fields are populated at all on the ANZ desk.
 
+**Session of 24 Sep 2026 — Ticket QA.** Same technique as the recent
+sessions: the real `views/index.html` served by a stub of the Jira routes over
+real data (the 100 most recent solved UK tickets with their owner fields,
+pulled through the connector), plus — new this time — **the real QA route
+block lifted out of `server.js` and mounted in the stub**, so the store,
+validation and wiring the browser exercised are the shipped code. Still no
+Jira OAuth session.
+
+- **Facts first, against live Jira**: the owner fields' shape, the migration
+  resolution being plain `Resolved` id 10038 on real tickets too (section 2's
+  correction), both desks' import windows, and that `created >= -Nm` is valid
+  JQL and cuts Last Quarter from 5,227 to 240 — checked with a known-invalid
+  query alongside, since the connector answers invalid JQL with 0 (this
+  session's own first attempt used a non-existent `startOfQuarter()` and got
+  exactly that 0).
+- **26 store assertions** (in-memory SQLite): the rubric's own worked example
+  (85%), all-N/A → null, N/A refused on the seven criteria that forbid it,
+  incomplete reviews refused with nothing written, 409 on a second QA of a
+  ticket from any session, critical-fail rules, the key guard (other projects,
+  `TACPC`, injection), a baseline review scored for the planned agent whatever
+  the browser claims, reservations and their release, skip + capped
+  replacement, the baseline arithmetic (mean, separate critical-fail rate,
+  per-criterion averages over applicable reviews), no column that could hold
+  ticket content, and persistence across reopening the file.
+- **28 page assertions** over the shipped functions run in a vm: the pool JQL
+  and its go-live bound for all 13 ranges and both desks, owner extraction
+  (dedupe, tiers, A4 Integration, apps), migration rows dropped by `created`
+  even with a real owner, the real 100-ticket pool's six agents and counts,
+  baseline planning (equal counts, no duplicates, cap, exclude, shared tickets
+  going to the agent with fewest options, the dedup shortfall — which caught
+  the cap-mode bug described in section 5c), score agreement with the server
+  over 2,000 random reviews, ADF escaping and the http(s)-only href rule, and
+  that every QA route sits behind `requireAuth`.
+- **In the browser**: fetch a period (4 pages, walked on the token), start a
+  single QA — John Clyde drawn as a **2.0** owner — score it through real
+  clicks (95.5%, matching the server), type the note with real keystrokes,
+  save; then seven more in a row with **zero Jira queries** and no repeat,
+  ending on "no ticket left". A baseline at 3 per agent: 4 × 3, one skip with
+  a same-agent replacement, all 12 scored, report correct. The shortfall
+  choice read right both ways at 12 per agent. Desk switch mid-fetch dropped
+  the stale pool; the unsaved-draft prompt kept or discarded as told; ending a
+  baseline released its 8 reservations. Every other tab still renders, no
+  console errors.
+- **After the browser run**: a second server on the same file saw all 20
+  reviews, answered 409 / 400 / 404 on a repeat QA, another desk and an
+  unknown session; the database file contains none of the ticket text the
+  review screen displayed. `server.js` itself booted with the store created
+  under `QA_DB_PATH`, every QA route 401 signed out, `/` anonymous still the
+  sign-in page.
+
+**Untested:** everything through the real Jira proxy — above all the comment
+route and whether `jsdPublic` arrives on real comments (the connector strips
+it), and a real description's ADF. Also a baseline over a period with hundreds
+of agents' tickets (the planner is fine; the page's agents table has no cap),
+and the ANZ desk with real data, since the stub returns nothing for `TAPC`.
+
+**Session of 25 Sep 2026 — the Skills Matrix.** No Jira involved, so the
+test was the store and the real page.
+
+- **Store, 20 assertions** (in-memory SQLite, seeded from the real workbook):
+  every one of the 120 ratings and 120 baseline values matches the sheet;
+  history imports with "John Vallestero", never "John V"; a stale `from` is
+  refused with nothing written; Confirmed is required; impossible dates
+  (`2026-02-30`), non-ISO dates and ratings outside 0–5 or non-integer are
+  refused; a same-value "change" is refused; a baseline edit changes the
+  baseline only and writes no history; a new person or product is 0 in both
+  grids for everyone; case-insensitive duplicates 409; archived people cannot
+  be edited and restore complete; history sorts by confirmed date. The import
+  script refuses a second run into the same file.
+- **In a browser**, against the real page and the real skills route block
+  lifted out of `server.js`: the matrix renders 8 × 15 in the sheet's colours
+  with +2/+1 on the two changed SMS Gateway cells; a keyboard edit opened the
+  dialog, an empty Confirmed was refused, a typed one saved, and History
+  showed it on top; Cancel and Escape revert the cell and keep scroll and
+  focus; a second "browser" changing the cell first produced the stale-rating
+  banner and a reload; a baseline edit saved without a dialog and added no
+  history row; add, duplicate (live and archived), archive and restore all
+  behaved; a desk switch kept the matrix. No console errors besides the three
+  deliberate 409s.
+- `server.js` booted with `[skills] store at …/data/skills.sqlite` and every
+  skills route 401 signed out.
+
+**Untested**: two real users at once (only simulated), and the Docker import
+path in the README.
+
+## 9a. Timing: where a slow load actually goes
+
+Added 18 Sep 2026, because "the dashboard is slow" had no answer. A load is
+four different costs measured in three different places, and the app could
+tell none of them apart — the browser only ever saw one number (how long
+`/api/search` took), which is Jira's time **plus** this server's **plus** the
+network **plus** JSON parsing at both ends.
+
+**It is always on.** A profiler you have to switch on is off when the slow
+load happens. The cost is one `performance.now()` per call and two bounded
+arrays.
+
+**How the split is made.** `timedFetch()` in `server.js` wraps every upstream
+Jira call and returns the figure on the response two ways: `Server-Timing:
+jira;dur=N` (a real header — it shows in devtools' Network > Timing tab with
+no tooling at all) and `X-Upstream-Ms` for the front end. `apiFetch()` times
+the whole round trip and subtracts; what is left is **proxy + wire**. It also
+reads the body as text and parses it itself, rather than via `res.json()`, so
+**download** and **parse** can be separated — a live ANZ page is hundreds of
+KB of SLA payload and parsing it is main-thread work that blocks rendering.
+`perfSpan()` wraps each loader, so anything a span spent that was *not*
+network or parse is **browser** work: charts, `innerHTML`, tiering.
+
+**Reading it.** In the browser console: `perfReport()` for the breakdown,
+`perfReport('calls')` for every request (with the page count per query), and
+`perfReport('spans')` for every timed operation. Server-side, `GET /api/perf`
+returns the last 500 upstream calls with p50/p95 per label; it is behind
+`requireAuth` because the JQL fragments in it describe the queue.
+
+**The `issues` figure per call is the one to watch.** `/rest/api/3/search/jql`
+**shrinks a page when many fields are requested** (section 8), so a query
+asking for 100 with `LIVE_FIELDS`' 15 fields can come back with 25 — turning
+one query into four strictly sequential round trips, because each needs the
+previous page's `nextPageToken`. That is invisible without this log, and it is
+the mechanism behind most of the slowness below.
+
+**What it found on the first run** (against the harness, UK desk shape):
+
+- **`loadLive()` issues four separate queries, one after another** — open,
+  reopened, and the wallboard's two "today" counts — and they do not depend on
+  each other. With four pages each that is **16 serial round trips** for one
+  refresh.
+- **Two of those four are the wallboard's**, fetched on every load *and* every
+  5-minute auto-refresh regardless of which tab is on screen. On a desk where
+  a query is ~1.3s that is half the load spent on a view nobody is looking at.
+- **The reopened query uses `LIVE_FIELDS`** — all 15, including all six SLA
+  payloads — to render a tile that shows a *count*. It pays full page-shrinking
+  for a number.
+- **Rendering is not the problem.** 400 issues rendered in **~80ms**, against
+  seconds of fetching. Blaming the charts would have been wrong.
+- **JSON parsing is not the problem either** — ~4ms per page.
+- **`views/index.html` is served uncompressed.** 501 KB decoded, 501 KB
+  transferred (`transferSize > decodedBodySize`, i.e. no `Content-Encoding`),
+  against **166 KB gzipped**. There is no `compression` middleware in
+  `server.js` and no dependency for one. Irrelevant on localhost (2ms);
+  a 3x download on the Access4 network.
+
+**Verified 18 Sep 2026**, by the technique the rest of this file uses — the
+real `views/index.html` served against a stub whose Jira latency is a knob,
+driven in a browser, plus the real server lines extracted into a Node suite.
+The load-bearing check is that the stub **slept 300ms while claiming 200ms**
+in `X-Upstream-Ms`: the report attributed 200 to Jira and the extra 100 to
+proxy + wire, per call. That is what proves the subtraction is real rather
+than cosmetic — a report that simply echoed the header would have passed a
+test where the two numbers agreed. 11 assertions cover `timedFetch` against a
+known delay, the issue count coming off the body, a non-JSON body not breaking
+the call it belongs to, the ring buffer staying bounded, both headers, and two
+guards worth keeping: **no bare `fetch()` to `api.atlassian.com` may remain**
+outside `timedFetch` (an untimed call would have its Jira time silently
+attributed to proxy + wire, blaming the wrong thing), and every timed call must
+send the header.
+
+**A missing header must read as "unknown", never as zero — corrected
+18 Sep 2026, on the first real run.** With no `X-Upstream-Ms` on any response
+the Jira column sums to 0 and the entire load lands under "Proxy + wire",
+which reads exactly like a finding: *Jira is instant, our proxy is the
+problem*. It is not a finding, it is an unmeasured quantity printed as a
+number — the silent-failure shape this file exists to catch, and it shipped
+that way for a few hours. `perfReport()` now counts how many responses
+actually carried the header and, when none did, collapses the two rows into
+one honest `Jira + proxy + wire` and warns. The usual cause is the one
+traps 4 and 7 describe: **the server process predates the instrumentation**,
+because `views/index.html` is re-read from disk on every request and
+`server.js` is not. `fetch('/api/perf')` returning 404 confirms it.
+
+Two smaller fixes went with it: the "slowest calls" table sorted on
+`upstreamMs`, so it came out in arbitrary order whenever that was null — it
+now sorts on the round trip, which is always observable — and failed requests
+now get their own table instead of only a count. That count is worth reading:
+the first real run showed `1 failed`, which was `/api/me` (a 21-byte
+`{"error":"me_failed"}`). Non-fatal by design, but it means `JIRA_BASE` fell
+back rather than resolving.
+
+**The first real run's headline, 18 Sep 2026 (UK desk, 43 open tickets):
+`loadLive` 6,145ms, of which rendering was 31ms and JSON parsing 1ms.** Per
+request: 2,162ms for the 415.7 KB open queue, **1,313ms for a 27-BYTE
+response**, 1,371ms for 2.4 KB. So there is a **~1.3s floor per request that
+has nothing to do with payload size**; moving the 415 KB adds only ~800ms on
+top. Four serial requests x that floor is ~5.3s of the 6.1s.
+
+The consequence for anyone tempted to optimise: **trimming fields barely
+matters here, and rendering does not matter at all.** Only making fewer
+requests does. `loadLive()` issues four that do not depend on each other, two
+of them the wallboard's. Parallelising them and skipping the wallboard pair
+off-tab would take a refresh to roughly the open query alone (~2.2s).
+**Deliberately not done** — the business call on 18 Sep 2026 was to leave the
+query behaviour alone. Whether that 1.3s floor is Jira evaluating the JQL or a
+TLS handshake through the corporate proxy is **still unmeasured**, because the
+run was made against a server process that predated the timing header.
+
+### The dead `/me` call, removed 18 Sep 2026
+
+Found in that same timing log as a 21-byte **403** costing 144ms on every page
+load. `/api/me` called `https://api.atlassian.com/me` and forwarded the
+viewer's `account_id` / `email` / `name`. Three things were true at once:
+
+- **Nothing read those fields.** Personal mode went on 17 Sep 2026 and took
+  the only consumer with it; `loadIdentity()` has read `siteUrl` and nothing
+  else since.
+- **The call needs the `read:me` scope, which `SCOPES` has never requested**,
+  so it could only ever 403. (Section 9's note that `/api/me` resolved
+  `JIRA_BASE` in a live session on 28 Aug 2026 predates whatever changed.)
+- **`siteUrl` never came from that call.** It is resolved once at
+  `/oauth/callback` from `accessible-resources` and kept on the session — but
+  the route returned early on a bad upstream response, so the 403 **discarded
+  `siteUrl` too** and every ticket's browse link silently fell back to the
+  front end's hardcoded site.
+
+The failure was invisible because boot does `loadIdentity().catch(() => {})`,
+by design: a wrong browse link is not worth blocking the dashboard over. It
+took the per-request log to surface it at all.
+
+`/api/me` is now a synchronous handler returning `siteUrl` and `projectKeys`
+off the session, with no upstream call. It stays behind `requireAuth`, so it
+is still the session probe the front end uses it for — better than before, in
+fact, since a dead session no longer reads the same as a missing scope.
+`loadIdentity()`'s guard moved from "account_id or email" to `siteUrl`, the
+one field it actually consumes. **If a viewer's identity is ever needed
+again**, add `read:me` to `SCOPES` — but that changes the consent screen and
+every existing session must re-authorise.
+
+Verified: 9 assertions, including the real route statement extracted from
+`server.js` and run against a fake req/res; that no `me_failed` branch or
+`api.atlassian.com/me` reference survives; and that `loadIdentity()`'s guard
+matches what the server now sends (the old guard would have **rejected** the
+new payload). In a browser against a stub mirroring the new shape: `/api/me`
+200 in 6ms, **0 failed requests**, `JIRA_BASE` resolving to
+`access4.atlassian.net/browse` and ticket links rendering against it rather
+than the fallback. The perf suite still passes unchanged.
+
+**Reading a run with no header is still worth doing.** `perfReport('calls')`
+prints `totalMs` per request regardless, and the comparison that needs no
+header at all is **size against time**: if a 27-byte response costs about what
+a 400 KB one costs, the cost is per-request — latency, TLS handshake, Jira
+evaluating the JQL — and then trimming fields will not help, while making
+fewer and parallel requests will.
+
+**Untested:** all of the above ran against the harness. The numbers from a real
+signed-in session will differ — that is the point of shipping the
+instrumentation rather than a conclusion — and `/api/perf` has never returned a
+real Jira figure, since no OAuth session was available this run.
+
 ## 10. Where things are
 
 ```
-server.js           OAuth, /api/me, /api/search proxy, static serving
+server.js           OAuth, /api/me, /api/search proxy, /api/qa routes, static serving
+qa-rubric.js        The QA rubric — the only copy (section 5c)
+qa-store.js         Ticket QA's SQLite store: schema, validation, baseline arithmetic
+skills-store.js     The Skills Matrix's SQLite store and its 0–5 scale (section 5d)
+skills-import.js    One-off load of the skills spreadsheet (as JSON) into an empty store
 views/index.html    The whole dashboard, self-contained, no build step
 public/login.html   Sign-in page
+data/qa.sqlite      Ticket QA's records (QA_DB_PATH; git-ignored; back it up)
+data/skills.sqlite  The Skills Matrix (SKILLS_DB_PATH; git-ignored; back it up)
 ```
 
 `views/index.html` is ~350 KB but most of that is **inlined vendor code**:
@@ -1769,11 +2301,23 @@ Landmarks inside that script:
 - `slaDrill` / `slaDrillSet()` / `slaDrillPanel()` — the tickets behind any
   figure in that matrix, red where the SLA was missed (section 5b)
 - `jsAttr()` — the only safe way to put a data value into an `onclick=""`
+- `qaPoolJql()` / `qaBuildPool()` / `qaOwnersOf()` — Ticket QA's one Jira
+  pull, the migration cut and who counts as an agent (section 5c)
+- `qaPlanBaseline()` — the baseline draw and its shortfall handling
+- `qaDraftStatus()` / `paintQaScorebar()` — what stands between the form and a
+  save; patches in place, never re-renders (trap 5)
+- `adfHtml()` — Jira rich text to escaped HTML, for descriptions and comments
+- `fetchIssueComments()` — the comments walk behind `/api/issue/:key/comment`
+- `renderSkills()` / `skillsMatrixHtml()` — the Skills Matrix and its Baseline
+  view (one grid, two modes); `renderSkillsDialog()` / `skillsSaveChange()` —
+  the "where was this confirmed?" prompt (section 5d)
 - `render()` — live tab; `renderPriorityList()` / `renderPriorityTable()`;
   `renderClosed()` / `renderClosedTable()`; `renderSla()` / `renderSlaTable()`;
   `renderVendor()` /
   `renderVendorTable()`; `renderTicketDetail()`;
   `renderHistorical()`; `renderWallboard()`
+- `PERF` / `perfSpan()` / `perfCall()` / `perfReport()` — the timing split
+  (section 9a); `timedFetch()` and `/api/perf` are its server half
 - `loadIdentity()` / `recomputeViews()` — the `/api/me` call behind `JIRA_BASE`,
   and the one place loaders publish what renderers read (section 8; this is
   what is left of the Personal mode block)
@@ -1831,6 +2375,25 @@ replace it, verify the integrity hash rather than trusting a download.
 - **Show two desks at once** → declined 8 Sep 2026 (section 8); would need
   `project in (...)` JQL *and* a widened server pin, which today matches only
   `project = <key>`
+- **QA reporting** (deferred 24 Sep 2026) → the data is normalised for it:
+  `qa_scores` is one row per criterion, `qa_reviews` carries agent, tier,
+  score, critical fail and `rubric_version`; `summarise()` in `qa-store.js` is
+  the arithmetic a report should reuse, not re-derive. Keep the critical-fail
+  rate separate from averages (rubric rule 8)
+- **Change the rubric** → `qa-rubric.js` only, and bump `RUBRIC_VERSION`; the
+  form renders from it
+- **Record who did a QA** → needs `read:me` in `SCOPES` (section 8) and a
+  column in `qa_reviews`
+- **A second agent-like service account turns up as an owner** → add its
+  account id to `QA_NON_AGENT_IDS`
+- **A third desk with QA** → give its `PROJECTS` entry a measured `goLive`, or
+  its migration imports will be drawn
+- **Change the skills scale wording** → `SKILL_LEVELS` in `skills-store.js`
+  only; the legend and tooltips render from it
+- **Record who made a skills change** → the same `read:me` question as QA
+  (section 8), plus a column in `skills_changes`
+- **A skills matrix per desk** → declined 25 Sep 2026 (UK only); would need a
+  project column on all five tables
 - **Survive restarts / run replicas** → swap the in-memory session store for
   `connect-redis`
 - **Permanent wallboard screen** → sessions expire after 12h; a display mode

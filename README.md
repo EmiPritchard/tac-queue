@@ -36,9 +36,10 @@ they cannot browse simply comes back empty.
 
 ## Requirements
 
-- Node.js 22.9+ (Docker image uses Node 22). `npm start` reads `.env` via
-  Node's built-in `--env-file-if-exists`, which is why the floor is 22.9 —
-  there is no `dotenv` dependency. Use `npm run start:noenv` where the
+- Node.js 22.13+ (Docker image uses Node 22). `npm start` reads `.env` via
+  Node's built-in `--env-file-if-exists` (22.9+), and Ticket QA stores its
+  records with the built-in `node:sqlite`, which needs no flag from 22.13 —
+  so there is neither a `dotenv` nor a database dependency. Use `npm run start:noenv` where the
   platform injects the environment itself (Docker, ECS, Cloud Run, App Service).
   Both scripts also pass `--use-system-ca`; if your Node rejects that flag it
   is too old for it, so upgrade Node (see **TLS on the corporate network**).
@@ -128,6 +129,36 @@ Sessions are held in memory, so restarting signs everyone out and running more
 than one replica requires a shared session store (`connect-redis` is a drop-in
 for `express-session`). Fine as-is for a single instance.
 
+**Ticket QA and the Skills Matrix write to disk** — the two things this app
+keeps, each in its own SQLite file. Ticket QA's (`QA_DB_PATH`, default
+`./data/qa.sqlite`) holds ticket keys, the agent reviewed and the QA answers;
+no customer data. The Skills Matrix's (`SKILLS_DB_PATH`, default
+`./data/skills.sqlite`) holds the team's names, their 0–5 product ratings, the
+baseline and the change history. Neither is sent to Jira. Each is the only
+copy, so:
+
+- **Back it up.** Copy the file (and its `-wal` sidecar) while the app is
+  stopped, or run `sqlite3 qa.sqlite ".backup qa-backup.sqlite"` while it runs.
+- **In Docker, mount a named volume on `/app/data`.** The image declares one,
+  but an anonymous volume goes with the container — use
+  `docker run -v tac-qa:/app/data …` so completed QAs and skills changes
+  survive a redeploy.
+- **One writer.** SQLite is one file on one host; replicas sharing it over a
+  network disk are not supported.
+
+**Loading the Skills Matrix spreadsheet.** A fresh `skills.sqlite` is empty.
+To load the "UK Product Skills Matrix" workbook, export it to JSON in the shape
+described at the top of `skills-import.js`, stop the server, and run
+
+    node skills-import.js path/to/skills-seed.json
+
+It refuses to run into a store that already has people in it, so it cannot
+overwrite edits made in the dashboard. In Docker, stop the app container, put
+the JSON in the volume and run the import in a one-off container on the same
+volume (`docker run --rm -v tac-qa:/app/data <image> node skills-import.js
+/app/data/skills-seed.json`), or import locally and copy `skills.sqlite` into
+the volume.
+
 ## Environment variables
 
 | Variable | Required | Purpose |
@@ -140,6 +171,8 @@ for `express-session`). Fine as-is for a single instance.
 | `JIRA_PROJECT_KEYS` | no | Comma-separated projects the proxy may query (default `TAC,TAPC` — UK and ANZ). The legacy singular `JIRA_PROJECT_KEY` is still read when this is unset, but pinning one key hides the other desk |
 | `PORT` | no | Default 3000 |
 | `TRUST_PROXY` | no | `true` behind a TLS-terminating proxy |
+| `QA_DB_PATH` | no | Ticket QA's SQLite file (default `./data/qa.sqlite`; `/app/data/qa.sqlite` in Docker). Created on first boot |
+| `SKILLS_DB_PATH` | no | The Skills Matrix's SQLite file (default `./data/skills.sqlite`; `/app/data/skills.sqlite` in Docker). Created empty on first boot — see above to load the spreadsheet |
 
 The app refuses to start if a required variable is missing or if
 `SESSION_SECRET` is too short — it will not fall back to serving unauthenticated.
@@ -147,8 +180,11 @@ The app refuses to start if a required variable is missing or if
 ## Layout
 
 ```
-server.js           OAuth flow, /api/me, /api/search + /api/count + /api/issue proxies, static serving
+server.js           OAuth flow, /api/me, /api/search + /api/count + /api/issue proxies, /api/qa, static serving
+qa-rubric.js        The Ticket QA rubric: criteria, N/A rules, critical fails, the score formula
+qa-store.js         Ticket QA storage (SQLite) and validation
 views/index.html    The dashboard (served only to signed-in users)
+data/               Ticket QA database, created at boot (git-ignored)
 public/login.html   Sign-in page (the only anonymous page)
 ```
 
@@ -162,11 +198,21 @@ served to anonymous visitors.
 | `GET /login` | no | Starts the Atlassian OAuth flow |
 | `GET /oauth/callback` | no | Completes it; validates `state` as a CSRF guard |
 | `GET /logout` | no | Destroys the session |
-| `GET /api/me` | yes | Signed-in user's `account_id`, `email`, `name` |
+| `GET /api/me` | yes | The session's Atlassian `siteUrl` and the allowed `projectKeys` (no upstream call) |
 | `POST /api/search` | yes | JQL proxy — `{jql, fields, maxResults, nextPageToken}` |
 | `POST /api/count` | yes | Approximate issue count for a JQL — `{jql}` → `{count}` |
 | `GET /api/issue/:key` | yes | One issue plus the first 100 changelog entries |
 | `GET /api/issue/:key/changelog` | yes | Changelog overflow — `?startAt=N` |
+| `GET /api/issue/:key/comment` | yes | Comments, 100 per page — `?startAt=N`. Each carries `jsdPublic` (public reply vs internal note) |
+| `GET /api/qa/rubric` | yes | The QA rubric the form is rendered from |
+| `GET /api/qa/excluded` | yes | `?project=` — ticket keys never to draw again (reviewed, skipped, reserved) |
+| `GET /api/qa/history` | yes | `?project=` — completed QAs, skips and sessions |
+| `POST /api/qa/sessions` | yes | Start a single-agent or baseline session |
+| `GET /api/qa/sessions/:id` | yes | A session, its tickets, reviews and baseline summary |
+| `POST /api/qa/sessions/:id/end` | yes | End a session; releases its unreviewed tickets |
+| `POST /api/qa/sessions/:id/items` | yes | Add a replacement ticket to a baseline after a skip |
+| `POST /api/qa/reviews` | yes | Save a QA. Validated and scored server-side; 409 if the ticket already has one |
+| `POST /api/qa/skips` | yes | Record a ticket as un-reviewable, with a reason |
 | `GET /healthz` | no | Liveness probe |
 
 `/api/count` exists because `/rest/api/3/search/jql` returns no total, only a

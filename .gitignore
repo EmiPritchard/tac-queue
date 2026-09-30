@@ -3,3 +3,5 @@ node_modules/
 .env.*
 !.env.example
 npm-debug.log*
+# Ticket QA and Skills Matrix databases (QA_DB_PATH, SKILLS_DB_PATH) — local records, never committed
+data/

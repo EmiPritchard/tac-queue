@@ -126,6 +126,79 @@ function causeChain(err) {
   return parts.join(' <- ');
 }
 
+// ── Timing ───────────────────────────────────────────────────────────────────
+// The question this exists to answer: when the dashboard feels slow, is JIRA
+// slow, is THIS PROCESS slow, or is the BROWSER slow? Nothing in the app could
+// tell them apart before, because the browser only ever sees one number — how
+// long /api/search took — and that is Jira's time plus ours plus the network
+// in between plus JSON parsing at both ends.
+//
+// So every upstream call is timed here, and the figure goes back on the
+// response two ways:
+//   Server-Timing: jira;dur=N   a real header browsers understand — it shows
+//                               up in devtools' Network > Timing tab unaided
+//   X-Upstream-Ms: N            the same number, for the front end's own log
+//
+// The browser subtracts it from its own measurement; what is left is this
+// process plus the network. See perfReport() in views/index.html.
+//
+// `bytes` and `issues` are logged too because they are the other half of the
+// story: /rest/api/3/search/jql SHRINKS pages when many fields are requested
+// (LIVE_FIELDS asks for 14), so a "100 per page" query can come back with 25 —
+// which turns one round trip into four. That is invisible without this log.
+const PERF_LOG_MAX = 500;
+const perfLog = [];
+
+function fmtBytes(n) {
+  if (n < 1024) return n + 'B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + 'KB';
+  return (n / 1024 / 1024).toFixed(2) + 'MB';
+}
+
+function recordPerf(entry) {
+  perfLog.push(entry);
+  if (perfLog.length > PERF_LOG_MAX) perfLog.shift();
+  console.log(
+    `[perf] ${entry.label.padEnd(9)} ${String(entry.ms).padStart(6)}ms  ${entry.status}  `
+    + `${fmtBytes(entry.bytes).padStart(8)}`
+    + (entry.issues != null ? `  ${entry.issues} issues` : '')
+    + (entry.detail ? `  ${entry.detail}` : '')
+  );
+}
+
+// Every upstream Jira call goes through here. Returns the response, its body
+// as text (read once — a Response body cannot be consumed twice) and the
+// round-trip time in whole milliseconds.
+async function timedFetch(label, url, init, detail) {
+  const t0 = process.hrtime.bigint();
+  const r = await fetch(url, init);
+  const text = await r.text();
+  const ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e6);
+  // Issue count is the cheapest useful signal about page shrinking. Parsing
+  // the body again costs a millisecond or two against a network call of
+  // hundreds, and a malformed body must not break the request it belongs to.
+  let issues = null;
+  try {
+    const j = JSON.parse(text);
+    if (Array.isArray(j.issues)) issues = j.issues.length;
+    else if (Array.isArray(j.values)) issues = j.values.length;
+  } catch (e) {}
+  recordPerf({
+    at: new Date().toISOString(), label, ms, status: r.status,
+    bytes: Buffer.byteLength(text), issues, detail: detail || '',
+  });
+  return { r, text, ms };
+}
+
+// Server-Timing is standard and needs no tooling to read; X-Upstream-Ms is the
+// same figure in a form the front end can pull off the response without
+// parsing the header grammar. Both are same-origin here, so no CORS expose
+// header is needed.
+function sendUpstreamTiming(res, ms, label) {
+  res.set('Server-Timing', `jira;dur=${ms};desc="${label}"`);
+  res.set('X-Upstream-Ms', String(ms));
+}
+
 // ── Token handling ───────────────────────────────────────────────────────────
 function tokenExpired(s) { return !s.tokens || Date.now() > (s.tokens.expiresAt - 60_000); }
 
@@ -227,25 +300,39 @@ app.get('/oauth/callback', async (req, res) => {
 app.get('/logout', (req, res) => { req.session.destroy(() => res.redirect('/')); });
 
 // ── API ──────────────────────────────────────────────────────────────────────
-app.get('/api/me', requireAuth, async (req, res) => {
-  try {
-    const r = await fetch('https://api.atlassian.com/me', {
-      headers: { Authorization: `Bearer ${req.session.tokens.accessToken}`, Accept: 'application/json' },
-    });
-    if (!r.ok) return res.status(r.status).json({ error: 'me_failed' });
-    const me = await r.json();
-    // Only what the dashboard needs; no need to ship the whole profile.
-    res.json({
-      account_id: me.account_id,
-      email: me.email,
-      name: me.name,
-      siteUrl: req.session.siteUrl,
-      projectKeys: PROJECT_KEYS,
-    });
-  } catch (e) {
-    console.error('[me]', e.message);
-    res.status(502).json({ error: 'upstream' });
-  }
+/**
+ * Which Atlassian site this session reaches, and which desks this process
+ * allows. Both are already known here; nothing upstream is asked.
+ *
+ * This used to call https://api.atlassian.com/me first and forward the
+ * viewer's account_id / email / name. That call was doing harm and no work:
+ *
+ *   - Nothing reads those three fields. Personal mode was removed on
+ *     17 Sep 2026 and took the only consumer with it; loadIdentity() has read
+ *     `siteUrl` and nothing else ever since.
+ *   - /me requires the `read:me` scope, which SCOPES has never requested, so
+ *     it could only ever 403.
+ *   - The route returned early on a bad upstream response, so that 403 threw
+ *     away `siteUrl` TOO — and `siteUrl` never came from /me in the first
+ *     place. Every ticket's browse link silently fell back to the front end's
+ *     hardcoded site.
+ *
+ * Found 18 Sep 2026 in the timing log (section 9a), where it showed as a
+ * 21-byte 403 costing 144ms on every page load. The failure was invisible
+ * because boot does `loadIdentity().catch(() => {})` — by design, since a
+ * wrong browse link is not worth blocking the dashboard over.
+ *
+ * `siteUrl` is resolved once at /oauth/callback from accessible-resources and
+ * kept on the session. If a viewer's identity is ever needed again, add
+ * `read:me` to SCOPES — but note that changes the consent screen, so every
+ * existing session has to re-authorise.
+ *
+ * Still behind requireAuth, so it still works as the session probe the front
+ * end uses it for. Better than before, in fact: a dead session no longer reads
+ * the same as a missing scope.
+ */
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({ siteUrl: req.session.siteUrl, projectKeys: PROJECT_KEYS });
 });
 
 /**
@@ -264,16 +351,24 @@ app.post('/api/search', requireAuth, async (req, res) => {
   if (nextPageToken) body.nextPageToken = nextPageToken;
 
   try {
-    const r = await fetch(`https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/search/jql`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${req.session.tokens.accessToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+    const { r, text, ms } = await timedFetch(
+      'search',
+      `https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/search/jql`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${req.session.tokens.accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
-    const text = await r.text();
+      // The two things that decide how many round trips a "single" query
+      // costs: how many fields were asked for (Jira shrinks pages as this
+      // grows) and whether this is a continuation.
+      `${body.fields.length}f ${nextPageToken ? 'page2+' : 'page1'} ${jql.slice(0, 60)}`
+    );
+    sendUpstreamTiming(res, ms, 'search');
     if (!r.ok) {
       console.error('[search]', r.status, text.slice(0, 300));
       return res.status(r.status).json({ error: 'jira_error', status: r.status, message: text.slice(0, 300) });
@@ -308,16 +403,21 @@ app.post('/api/count', requireAuth, async (req, res) => {
   // probe how many issues exist in other projects either.
   if (!jqlProjectAllowed(jql)) return sendProjectPinError(res);
   try {
-    const r = await fetch(`https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/search/approximate-count`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${req.session.tokens.accessToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+    const { r, text, ms } = await timedFetch(
+      'count',
+      `https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/search/approximate-count`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${req.session.tokens.accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ jql }),
       },
-      body: JSON.stringify({ jql }),
-    });
-    const text = await r.text();
+      jql.slice(0, 60)
+    );
+    sendUpstreamTiming(res, ms, 'count');
     if (!r.ok) {
       console.error('[count]', r.status, text.slice(0, 300));
       return res.status(r.status).json({ error: 'jira_error', status: r.status, message: text.slice(0, 300) });
@@ -327,6 +427,37 @@ app.post('/api/count', requireAuth, async (req, res) => {
     console.error('[count]', e.message);
     res.status(502).json({ error: 'upstream', message: e.message });
   }
+});
+
+/**
+ * What the upstream Jira calls actually cost. Read-only, per-process and
+ * in-memory (last PERF_LOG_MAX calls) — it is a diagnostic, not a metric
+ * store, and it is deliberately behind requireAuth because the JQL fragments
+ * in it describe the queue.
+ *
+ * `?label=search` narrows to one kind of call. The summary block is the part
+ * worth reading: p50/p95 per label, and total bytes, which is what tells you
+ * whether a slow load is one slow call or thirty quick ones.
+ */
+app.get('/api/perf', requireAuth, (req, res) => {
+  const want = req.query.label ? String(req.query.label) : null;
+  const calls = want ? perfLog.filter(e => e.label === want) : perfLog.slice();
+  const byLabel = {};
+  for (const e of calls) (byLabel[e.label] ||= []).push(e);
+  const pct = (arr, p) => arr.length ? arr[Math.min(arr.length - 1, Math.floor(arr.length * p))] : null;
+  const summary = Object.entries(byLabel).map(([label, es]) => {
+    const ms = es.map(e => e.ms).sort((a, b) => a - b);
+    return {
+      label,
+      calls: es.length,
+      totalMs: ms.reduce((a, b) => a + b, 0),
+      minMs: ms[0], p50Ms: pct(ms, 0.5), p95Ms: pct(ms, 0.95), maxMs: ms[ms.length - 1],
+      totalBytes: es.reduce((a, e) => a + e.bytes, 0),
+      totalIssues: es.reduce((a, e) => a + (e.issues || 0), 0),
+      errors: es.filter(e => e.status >= 400).length,
+    };
+  }).sort((a, b) => b.totalMs - a.totalMs);
+  res.json({ since: calls[0]?.at || null, retained: perfLog.length, summary, calls });
 });
 
 // Single-issue read, for the ticket detail timeline. Two routes rather than
@@ -351,8 +482,12 @@ const ISSUE_KEY_RE = new RegExp(`^(?:${PROJECT_KEYS.join('|')})-\\d{1,10}$`, 'i'
 // "N.N TAC Owner" fields are the ones that make "when owners changed hands"
 // answerable: they are separate from `assignee` and are what the TAC workflow
 // actually moves between people.
+//
+// `description` is here for the Ticket QA tab, whose review screen needs the
+// customer's original request next to the comments. It is displayed only —
+// nothing server-side keeps it (see qa-store.js on what is stored).
 const DETAIL_FIELDS = [
-  'summary', 'status', 'priority', 'issuetype', 'assignee', 'reporter',
+  'summary', 'description', 'status', 'priority', 'issuetype', 'assignee', 'reporter',
   'created', 'updated', 'resolutiondate', 'resolution', 'issuelinks',
   'customfield_10874',                                        // TAC Tier
   'customfield_10859', 'customfield_10860', 'customfield_10861', // 1.5/2.0/2.5 TAC Owner
@@ -363,13 +498,18 @@ const DETAIL_FIELDS = [
 
 async function jiraGet(req, res, path, label) {
   try {
-    const r = await fetch(`https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/${path}`, {
-      headers: {
-        Authorization: `Bearer ${req.session.tokens.accessToken}`,
-        Accept: 'application/json',
+    const { r, text, ms } = await timedFetch(
+      label,
+      `https://api.atlassian.com/ex/jira/${req.session.cloudId}/rest/api/3/${path}`,
+      {
+        headers: {
+          Authorization: `Bearer ${req.session.tokens.accessToken}`,
+          Accept: 'application/json',
+        },
       },
-    });
-    const text = await r.text();
+      path.split('?')[0]
+    );
+    sendUpstreamTiming(res, ms, label);
     if (!r.ok) {
       console.error(`[${label}]`, r.status, text.slice(0, 300));
       return res.status(r.status).json({ error: 'jira_error', status: r.status, message: text.slice(0, 300) });
@@ -399,6 +539,90 @@ app.get('/api/issue/:key/changelog', requireAuth, async (req, res) => {
   await jiraGet(req, res,
     `issue/${encodeURIComponent(key)}/changelog?startAt=${startAt}&maxResults=100`, 'changelog');
 });
+
+// Comments, for the Ticket QA review screen: most of the rubric (notes,
+// clarity, expectation setting, tone, confidence, closure) can only be judged
+// by reading them. Paged like the changelog, and for the same reason — the
+// browser walks `startAt` until it has `total`.
+//
+// On a Service Management issue each comment carries `jsdPublic`: true for a
+// reply the customer saw, false for an internal note. The QA screen splits on
+// it, since "customer communication" and "internal documentation" are scored
+// separately. Passed straight through; this route stores nothing.
+app.get('/api/issue/:key/comment', requireAuth, async (req, res) => {
+  const key = String(req.params.key || '');
+  if (!ISSUE_KEY_RE.test(key)) {
+    return res.status(403).json({ error: 'issue_not_allowed', message: `Only ${PROJECT_KEYS_LABEL} issues can be read.` });
+  }
+  const startAt = Math.max(0, Number(req.query.startAt) || 0);
+  await jiraGet(req, res,
+    `issue/${encodeURIComponent(key)}/comment?startAt=${startAt}&maxResults=100&orderBy=created`, 'comment');
+});
+
+// ── Ticket QA ────────────────────────────────────────────────────────────────
+// The one place this app WRITES anything, and it writes to its own SQLite
+// file, never to Jira. See qa-store.js for what is kept (ticket keys and QA
+// answers) and, more to the point, what is not (any customer data).
+//
+// Every route is behind requireAuth like the rest of the API. There is no
+// per-reviewer identity — SCOPES has no `read:me`, by the business's choice on
+// 24 Sep 2026 — so any signed-in viewer can run and read QA sessions.
+const { openQaStore, QaError } = require('./qa-store');
+const QA_DB_PATH = process.env.QA_DB_PATH || path.join(__dirname, 'data', 'qa.sqlite');
+const qaStore = openQaStore(QA_DB_PATH, { issueKeyRe: ISSUE_KEY_RE, projectKeys: PROJECT_KEYS });
+console.log(`[qa] store at ${QA_DB_PATH === ':memory:' ? ':memory:' : path.resolve(QA_DB_PATH)}`);
+
+function qaRoute(fn) {
+  return (req, res) => {
+    try { res.json(fn(req)); }
+    catch (e) {
+      if (e instanceof QaError) return res.status(e.status).json({ error: e.code, message: e.message });
+      console.error('[qa]', e);
+      res.status(500).json({ error: 'qa_failed', message: 'The QA store failed. Details are in the server log.' });
+    }
+  };
+}
+
+app.get('/api/qa/rubric', requireAuth, qaRoute(() => qaStore.rubric()));
+app.get('/api/qa/excluded', requireAuth, qaRoute(req => qaStore.excludedKeys(req.query.project)));
+app.get('/api/qa/history', requireAuth, qaRoute(req => qaStore.listHistory(req.query.project, req.query.limit)));
+app.post('/api/qa/sessions', requireAuth, qaRoute(req => qaStore.createSession(req.body || {})));
+app.get('/api/qa/sessions/:id', requireAuth, qaRoute(req => qaStore.getSession(req.params.id)));
+app.post('/api/qa/sessions/:id/end', requireAuth, qaRoute(req => qaStore.endSession(req.params.id)));
+app.post('/api/qa/sessions/:id/items', requireAuth, qaRoute(req => qaStore.addItem(req.params.id, req.body || {})));
+app.post('/api/qa/reviews', requireAuth, qaRoute(req => qaStore.saveReview(req.body || {})));
+app.post('/api/qa/skips', requireAuth, qaRoute(req => qaStore.skipTicket(req.body || {})));
+
+// ── Product Skills Matrix ────────────────────────────────────────────────────
+// The team's skills matrix, formerly a spreadsheet. Its own SQLite file; no
+// Jira call at all. People are the matrix's own list, not Jira users. Same
+// access model as Ticket QA: any signed-in viewer can read and edit, and no
+// editor identity is recorded (SCOPES has no `read:me`). See skills-store.js.
+const { openSkillsStore, SkillsError } = require('./skills-store');
+const SKILLS_DB_PATH = process.env.SKILLS_DB_PATH || path.join(__dirname, 'data', 'skills.sqlite');
+const skillsStore = openSkillsStore(SKILLS_DB_PATH);
+console.log(`[skills] store at ${SKILLS_DB_PATH === ':memory:' ? ':memory:' : path.resolve(SKILLS_DB_PATH)}`);
+
+function skillsRoute(fn) {
+  return (req, res) => {
+    try { res.json(fn(req)); }
+    catch (e) {
+      if (e instanceof SkillsError) return res.status(e.status).json({ error: e.code, message: e.message });
+      console.error('[skills]', e);
+      res.status(500).json({ error: 'skills_failed', message: 'The skills store failed. Details are in the server log.' });
+    }
+  };
+}
+const archivedFlag = body => !!(body && body.archived);
+
+app.get('/api/skills', requireAuth, skillsRoute(() => skillsStore.state()));
+app.get('/api/skills/history', requireAuth, skillsRoute(req => skillsStore.history(req.query.limit)));
+app.post('/api/skills/ratings', requireAuth, skillsRoute(req => skillsStore.changeRating(req.body || {})));
+app.post('/api/skills/baseline', requireAuth, skillsRoute(req => skillsStore.setBaseline(req.body || {})));
+app.post('/api/skills/people', requireAuth, skillsRoute(req => skillsStore.addPerson(req.body || {})));
+app.post('/api/skills/people/:id/archive', requireAuth, skillsRoute(req => skillsStore.setPersonArchived(req.params.id, archivedFlag(req.body))));
+app.post('/api/skills/products', requireAuth, skillsRoute(req => skillsStore.addProduct(req.body || {})));
+app.post('/api/skills/products/:id/archive', requireAuth, skillsRoute(req => skillsStore.setProductArchived(req.params.id, archivedFlag(req.body))));
 
 // ── Static app ───────────────────────────────────────────────────────────────
 // public/ holds only what an anonymous visitor may see (the sign-in page).
